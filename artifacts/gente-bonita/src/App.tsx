@@ -284,9 +284,15 @@ type BookingForm = {
  observations: string;
 };
 
+function isMakeupOrLashes(title: string) {
+  const lower = title.toLowerCase();
+  return lower.includes('make') || lower.includes('cílio') || lower.includes('cilio');
+}
+
 function Booking({ selectedServices, onClearSelection }: { selectedServices: string[]; onClearSelection: () => void }) {
  const [submitted, setSubmitted] = useState(false);
  const [serviceError, setServiceError] = useState(false);
+ const [conflictMessage, setConflictMessage] = useState('');
  const [form, setForm] = useState<BookingForm>({ name: '', whatsapp: '', services: selectedServices, professional: '', date: '', time: '', observations: '' });
 
  const { data: config } = useSiteConfig();
@@ -299,12 +305,26 @@ function Booking({ selectedServices, onClearSelection }: { selectedServices: str
  }
  function toggleService(service: string) {
  setServiceError(false);
- setForm((current) => ({
- ...current,
- services: current.services.includes(service)
- ? current.services.filter((item) => item !== service)
- : [...current.services, service],
- }));
+ setConflictMessage('');
+ setForm((current) => {
+   const isIncomingMakeup = isMakeupOrLashes(service);
+   const isRemoving = current.services.includes(service);
+   
+   if (!isRemoving && current.services.length > 0) {
+     const currentCategoryIsMakeup = isMakeupOrLashes(current.services[0]);
+     if (currentCategoryIsMakeup !== isIncomingMakeup) {
+       setConflictMessage('Por favor, finalize este agendamento primeiro. Como estes serviços são realizados por profissionais diferentes, pedimos que sejam agendados separadamente. Agradecemos a compreensão!');
+       return current;
+     }
+   }
+   
+   return {
+     ...current,
+     services: isRemoving
+       ? current.services.filter((item) => item !== service)
+       : [...current.services, service],
+   };
+ });
  }
  function submit(event: FormEvent<HTMLFormElement>) {
  event.preventDefault();
@@ -317,7 +337,9 @@ function Booking({ selectedServices, onClearSelection }: { selectedServices: str
  if (submitted) {
    const dateStr = form.date ? form.date.split('-').reverse().join('/') : '';
    const whatsappMessage = encodeURIComponent(`Olá! Gostaria de confirmar meu agendamento:\n\n*Nome:* ${form.name}\n*Contato:* ${form.whatsapp}\n*Serviço(s):* ${form.services.join(', ')}\n*Data:* ${dateStr}\n*Horário:* ${form.time}${form.observations ? `\n*Observações:* ${form.observations}` : ''}`);
-   const whatsappUrl = `https://wa.me/${contacts.whatsappNumber}?text=${whatsappMessage}`;
+   const hasMakeupOrLashes = form.services.some(isMakeupOrLashes);
+   const finalWhatsappNumber = hasMakeupOrLashes ? '5564996558307' : contacts.whatsappNumber;
+   const whatsappUrl = `https://wa.me/${finalWhatsappNumber}?text=${whatsappMessage}`;
 
    return (
      <section id="agendamento" className="scroll-mt-6 bg-[#d68c80] py-20 text-[#24161d] md:py-24">
@@ -363,6 +385,7 @@ function Booking({ selectedServices, onClearSelection }: { selectedServices: str
  })}
  </div>
  {serviceError && <p className="mt-2 text-xs text-[#713e42]" role="alert">Escolha pelo menos um serviço para continuar.</p>}
+ {conflictMessage && <p className="mt-2 text-xs text-[#713e42] font-medium" role="alert">{conflictMessage}</p>}
  </div>
  <div className="grid gap-5">
  <label><span className="gb-input-label text-[#3a1c20]">Data desejada</span><input required type="date" value={form.date} onChange={(event) => updateField('date', event.target.value)} className="gb-field text-[#f9eee7]" data-testid="input-booking-date" /></label>
