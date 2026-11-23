@@ -998,6 +998,10 @@ function MediaManagerTab({
                   <Input
                     value={item.rotulo || ''}
                     onChange={(e) => handleUpdateGalleryLabel(idx, e.target.value)}
+                    onBlur={async () => {
+                      await syncGalleryToSupabase(galleryItems);
+                      toast({ title: 'Legenda atualizada no Supabase!' });
+                    }}
                     className="bg-[#0B0908] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 text-xs"
                     placeholder="Ex: Loiro Iluminado"
                   />
