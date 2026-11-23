@@ -339,7 +339,9 @@ function MediaManagerTab({
 }) {
   const { toast } = useToast();
   const [videoUrl, setVideoUrl] = useState(config.videoUrl || '/videos/duo-espaco.mp4');
-  const [posterImage, setPosterImage] = useState(config.posterImage || '/images/salao-luxury.jpg');
+  const [posterImage, setPosterImage] = useState(
+    config.posterImage && config.posterImage !== '/images/salao-luxury.jpg' ? config.posterImage : ''
+  );
   const [logoImage, setLogoImage] = useState(config.logoImage || '/images/duo-espaco-logo.jpg');
   const [heroImage, setHeroImage] = useState(config.heroImage || '/images/cassiano-e-isabella.jpg');
   const [megaHairImage, setMegaHairImage] = useState(config.megaHairImage || '/images/mega-hair.jpg');
@@ -361,7 +363,9 @@ function MediaManagerTab({
   // Sincroniza o estado sempre que os dados chegam da nuvem Supabase
   useEffect(() => {
     if (config?.videoUrl) setVideoUrl(config.videoUrl);
-    if (config?.posterImage) setPosterImage(config.posterImage);
+    if (config?.posterImage !== undefined) {
+      setPosterImage(config.posterImage === '/images/salao-luxury.jpg' ? '' : config.posterImage);
+    }
     if (config?.logoImage) setLogoImage(config.logoImage);
     if (config?.heroImage) setHeroImage(config.heroImage);
     if (config?.megaHairImage) setMegaHairImage(config.megaHairImage);
@@ -580,7 +584,7 @@ function MediaManagerTab({
 
         {/* Pré-visualização do Vídeo e Caminho */}
         <div className="grid gap-6 md:grid-cols-[1fr_260px] items-start">
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div>
               <Label className="text-xs font-mono uppercase text-[#A99B90]">Caminho / URL Atual do Vídeo</Label>
               <Input 
@@ -591,8 +595,78 @@ function MediaManagerTab({
               />
             </div>
             <p className="text-xs text-[#A99B90] leading-relaxed">
-              Você pode clicar no botão <strong>"Subir Vídeo da Galeria"</strong> acima para escolher qualquer arquivo MP4 ou MOV do seu dispositivo, ou digitar uma URL direta.
+              Você pode clicar no botão <strong>"Subir Vídeo da Galeria"</strong> acima para escolher qualquer arquivo MP4 ou MOV do seu celular ou computador, ou colar uma URL.
             </p>
+
+            {/* Controle de Capa do Vídeo (Poster) */}
+            <div className="pt-4 border-t border-[#BB8D5B]/20 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#14100E] p-4 rounded-xl border border-[#BB8D5B]/25">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold uppercase text-[#E0BC8D]">Capa Antes do Play (Poster)</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
+                      posterImage && posterImage.trim() !== '' && posterImage !== '/images/salao-luxury.jpg'
+                        ? 'bg-[#BB8D5B]/20 text-[#E0BC8D] border border-[#BB8D5B]/40'
+                        : 'bg-white/5 text-[#A99B90] border border-white/10'
+                    }`}>
+                      {posterImage && posterImage.trim() !== '' && posterImage !== '/images/salao-luxury.jpg'
+                        ? 'Capa Personalizada Ativa'
+                        : '1º Frame do Vídeo (Natural)'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#A99B90]">
+                    {posterImage && posterImage.trim() !== '' && posterImage !== '/images/salao-luxury.jpg'
+                      ? 'Imagem personalizada visível antes de reproduzir o vídeo.'
+                      : 'O site mostra naturalmente o 1º frame do vídeo enviado, sem fotos fakes.'}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="file"
+                    ref={posterInputRef}
+                    accept="image/*"
+                    onChange={(e) => handlePhotoUpload(e, setPosterImage, 'posterImage', setUploadingPoster, 'Capa do Vídeo')}
+                    className="hidden"
+                  />
+                  <Button
+                    type="button"
+                    disabled={uploadingPoster}
+                    onClick={() => posterInputRef.current?.click()}
+                    className="bg-[#BB8D5B]/20 text-[#E0BC8D] border border-[#BB8D5B]/40 hover:bg-[#BB8D5B] hover:text-[#0B0908] font-mono text-xs uppercase"
+                  >
+                    {uploadingPoster ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    ) : (
+                      <Upload className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    {posterImage && posterImage !== '/images/salao-luxury.jpg' ? 'Trocar Capa da Galeria' : 'Subir Foto de Capa'}
+                  </Button>
+
+                  {posterImage && posterImage.trim() !== '' && posterImage !== '/images/salao-luxury.jpg' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={async () => {
+                        setPosterImage('');
+                        saveSiteConfigLocally({ posterImage: '' });
+                        try {
+                          await supabase.from('configuracoes').upsert({ id: 'posterImage', valor: '' });
+                        } catch (e) {}
+                        toast({
+                          title: 'Capa personalizada removida!',
+                          description: 'O vídeo agora exibe o 1º frame original do próprio vídeo.',
+                        });
+                        onSuccess();
+                      }}
+                      className="border-red-500/30 text-red-400 hover:bg-red-500/10 font-mono text-xs uppercase"
+                    >
+                      Usar 1º frame do vídeo
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Preview 9:16 Vertical */}
@@ -600,11 +674,12 @@ function MediaManagerTab({
             <span className="font-mono text-[10px] uppercase text-[#BB8D5B] mb-2">Pré-visualização 9:16</span>
             <div className="relative w-[150px] aspect-[9/16] overflow-hidden rounded-2xl border-2 border-[#BB8D5B]/40 bg-[#14100E] shadow-xl">
               <video
-                key={videoUrl}
+                key={`${videoUrl}-${posterImage}`}
                 src={videoUrl}
                 controls
                 playsInline
-                poster={posterImage}
+                preload="metadata"
+                poster={posterImage && posterImage.trim() !== '' && posterImage !== '/images/salao-luxury.jpg' ? posterImage : undefined}
                 className="h-full w-full object-cover"
               >
                 <source src={videoUrl} type="video/mp4" />
@@ -664,10 +739,13 @@ function MediaManagerTab({
               </div>
 
               <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-[#BB8D5B]/30 bg-[#14100E]">
-                {posterImage ? (
+                {posterImage && posterImage.trim() !== '' && posterImage !== '/images/salao-luxury.jpg' ? (
                   <img src={posterImage} alt="Capa" className="h-full w-full object-cover" />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-xs text-[#A99B90]">Sem capa</div>
+                  <div className="flex h-full w-full flex-col items-center justify-center p-3 text-center text-xs text-[#A99B90]">
+                    <Film className="w-5 h-5 mb-1 text-[#BB8D5B]/60" />
+                    <span>1º frame original do vídeo</span>
+                  </div>
                 )}
               </div>
             </div>

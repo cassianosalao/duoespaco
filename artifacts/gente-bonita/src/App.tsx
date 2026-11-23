@@ -419,7 +419,7 @@ function CabeloEUnhas({ onSelectService }: { onSelectService: (service: string, 
 function About() {
   const { data: config } = useSiteConfig();
   const videoSrc = config?.videoUrl || '/videos/duo-espaco.mp4';
-  const posterSrc = config?.posterImage || '/images/salao-luxury.jpg';
+  const customPoster = config?.posterImage && config.posterImage.trim() !== '' && config.posterImage !== '/images/salao-luxury.jpg' ? config.posterImage : undefined;
 
   return (
     <section id="sobre" className="scroll-mt-6 bg-[#0E0B0A] py-20 text-[#F5F0E8] md:py-28 border-t border-[#BB8D5B]/20">
@@ -454,7 +454,7 @@ function About() {
                   controls
                   playsInline
                   preload="metadata"
-                  poster={posterSrc}
+                  poster={customPoster}
                   className="h-full w-full object-cover rounded-2xl"
                 >
                   <source src={videoSrc} type="video/mp4" />

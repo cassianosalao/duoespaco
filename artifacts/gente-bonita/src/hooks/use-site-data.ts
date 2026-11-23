@@ -26,7 +26,7 @@ export const DEFAULT_CONFIG: Record<string, string> = {
 
   // Vídeo & Mídias
   videoUrl: '/videos/duo-espaco.mp4',
-  posterImage: '/images/salao-luxury.jpg',
+  posterImage: '', // Vazio por padrão para exibir o próprio 1º frame do vídeo (sem imagem fake)
   logoImage: '/images/duo-espaco-logo.jpg',
   heroImage: '/images/cassiano-e-isabella.jpg',
   megaHairImage: '/images/mega-hair.jpg',
