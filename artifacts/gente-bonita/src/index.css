@@ -308,3 +308,22 @@
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-4px); }
 }
+
+/* Ocultação forçada de qualquer badge/watermark da Netlify */
+[class*="netlify"],
+[id*="netlify"],
+[data-netlify-badge],
+a[href*="netlify.com"],
+iframe[src*="netlify"],
+div:has(> a[href*="netlify.com"]),
+div:has(> [class*="netlify"]) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
+  z-index: -9999 !important;
+}

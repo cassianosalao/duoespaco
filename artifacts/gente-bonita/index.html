@@ -16,6 +16,42 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
+    <style>
+      /* Oculta imediatamente qualquer badge ou marca injetada pela Netlify */
+      [class*="netlify"],
+      [id*="netlify"],
+      [data-netlify-badge],
+      a[href*="netlify.com"],
+      iframe[src*="netlify"],
+      div:has(> a[href*="netlify.com"]),
+      div:has(> [class*="netlify"]) {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        position: absolute !important;
+        left: -9999px !important;
+      }
+    </style>
+    <script>
+      (function() {
+        function removeNetlifyMarks() {
+          var targets = document.querySelectorAll('a[href*="netlify.com"], [class*="netlify"], [id*="netlify"], iframe[src*="netlify"]');
+          targets.forEach(function(el) {
+            var fixedParent = el.closest('div');
+            if (fixedParent && (fixedParent.style.position === 'fixed' || fixedParent.style.position === 'absolute')) {
+              fixedParent.remove();
+            } else {
+              el.remove();
+            }
+          });
+        }
+        var observer = new MutationObserver(removeNetlifyMarks);
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+        window.addEventListener('DOMContentLoaded', removeNetlifyMarks);
+        window.addEventListener('load', removeNetlifyMarks);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

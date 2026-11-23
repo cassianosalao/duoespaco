@@ -1,8 +1,12 @@
 [build]
-  command = "pnpm install && pnpm run build"
+  command = "pnpm run build"
   publish = "dist/public"
 
 [build.environment]
-  PORT = "5173"
-  BASE_PATH = "/"
   NODE_VERSION = "20"
+  PNPM_FLAGS = "--no-frozen-lockfile"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
