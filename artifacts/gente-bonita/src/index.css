@@ -310,13 +310,18 @@
 }
 
 /* Ocultação forçada de qualquer badge/watermark da Netlify */
+netlify-badge,
+netlify-drawer,
+netlify-feedback,
 [class*="netlify"],
 [id*="netlify"],
 [data-netlify-badge],
 a[href*="netlify.com"],
 iframe[src*="netlify"],
 div:has(> a[href*="netlify.com"]),
-div:has(> [class*="netlify"]) {
+div:has(> [class*="netlify"]),
+div:has(> netlify-badge),
+div:has(> netlify-drawer) {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
