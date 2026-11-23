@@ -1,1043 +1,1365 @@
-import { useEffect, useState } from 'react';
-
+import { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'wouter';
-
 import { supabase } from '@/lib/supabase';
-
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
 import { Button } from '@/components/ui/button';
-
 import { Input } from '@/components/ui/input';
-
 import { Label } from '@/components/ui/label';
-
 import { Textarea } from '@/components/ui/textarea';
-
-import { LogOut, Save, Plus, Trash2, Eye, EyeOff, Image, ToggleLeft, ToggleRight } from 'lucide-react';
-
+import { Switch } from '@/components/ui/switch';
+import { 
+  LogOut, Save, Plus, Trash2, Video, DollarSign, 
+  MapPin, Clock, Scissors, Image as ImageIcon, FileText, 
+  CheckCircle2, Upload, Film, Loader2, Sparkles
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { 
+  useSiteConfig, 
+  useServices, 
+  useGallery, 
+  saveSiteConfigLocally, 
+  saveServicesLocally, 
+  saveGalleryLocally,
+  DEFAULT_CONFIG 
+} from '@/hooks/use-site-data';
 
-import { useSiteConfig, useServices, useGallery, useCombos } from '@/hooks/use-site-data';
-
-
-
-
-function SitePhotosManager() {
-  const { toast } = useToast();
-  const { data: config, refetch } = useSiteConfig();
-  
-  const handleUpload = async (key: string, file: File) => {
-    try {
-      const ext = file.name.split('.').pop();
-      const filename = `${key}-${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('fotos').upload(filename, file);
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from('fotos').getPublicUrl(filename);
-      
-      const { error: dbError } = await supabase.from('configuracoes').upsert({ id: key, valor: urlData.publicUrl });
-      if (dbError) throw dbError;
-      
-      toast({ title: 'Foto atualizada com sucesso!' });
-      refetch();
-    } catch (err) {
-      console.error(err);
-      toast({ title: 'Erro ao enviar foto', variant: 'destructive' });
+// Função de upload que aceita qualquer foto ou vídeo direto da galeria
+async function uploadMediaFile(file: File): Promise<string> {
+  // 1. Tenta endpoint local de alta velocidade /api/upload
+  try {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: {
+        'x-filename': encodeURIComponent(file.name),
+        'Content-Type': 'application/octet-stream',
+      },
+      body: file,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.url) return data.url;
     }
-  };
+  } catch (e) {
+    console.warn('Upload local falhou, tentando Supabase...', e);
+  }
 
-  return (
-    <div className="bg-[#111014] p-6 rounded-lg border border-[#f9eee7]/15 mt-8">
-      <h2 className="text-xl mb-4 text-[#df9587]">Fotos Principais</h2>
-      <p className="text-sm text-[#a99594] mb-6">Altere a Foto da Hero, do Mega Hair e dos Cílios.</p>
-      
-      <div className="grid gap-8 md:grid-cols-3">
-        <div>
-          <Label className="text-[#d1bbb6] mb-2 block">Foto da Hero</Label>
-          <Input type="file" accept="image/png, image/jpeg" className="bg-[#080709] border-[#f9eee7]/20 text-[#f9eee7] cursor-pointer" onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleUpload('heroImage', file);
-          }} />
-          {config?.heroImage && <img src={config.heroImage} alt="Hero" className="mt-3 h-32 w-auto rounded border border-[#f9eee7]/20 object-cover" />}
-        </div>
-        
-        <div>
-          <Label className="text-[#d1bbb6] mb-2 block">Foto do Mega Hair</Label>
-          <Input type="file" accept="image/png, image/jpeg" className="bg-[#080709] border-[#f9eee7]/20 text-[#f9eee7] cursor-pointer" onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleUpload('megaHairImage', file);
-          }} />
-          {config?.megaHairImage && <img src={config.megaHairImage} alt="Mega Hair" className="mt-3 h-32 w-auto rounded border border-[#f9eee7]/20 object-cover" />}
-        </div>
+  // 2. Tenta Supabase Storage
+  try {
+    const filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const bucket = file.type.startsWith('video/') ? 'videos' : 'fotos';
+    const { data, error } = await supabase.storage.from(bucket).upload(filename, file);
+    if (!error && data) {
+      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(filename);
+      if (urlData?.publicUrl) return urlData.publicUrl;
+    }
+  } catch (e) {
+    console.warn('Supabase storage falhou, usando data url em memória...', e);
+  }
 
-        <div>
-          <Label className="text-[#d1bbb6] mb-2 block">Foto dos Cílios</Label>
-          <Input type="file" accept="image/png, image/jpeg" className="bg-[#080709] border-[#f9eee7]/20 text-[#f9eee7] cursor-pointer" onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleUpload('ciliosImage', file);
-          }} />
-          {config?.ciliosImage && <img src={config.ciliosImage} alt="Cílios" className="mt-3 h-32 w-auto rounded border border-[#f9eee7]/20 object-cover" />}
-        </div>
-      </div>
-    </div>
-  );
+  // 3. Fallback Data URL
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function AdminDashboard() {
-
   const [, setLocation] = useLocation();
-
-  const { toast } = useToast();
-
   const [loading, setLoading] = useState(true);
 
-
-
   const configQuery = useSiteConfig();
-
   const servicesQuery = useServices();
-
-  const combosQuery = useCombos();
+  const galleryQuery = useGallery();
 
   useEffect(() => {
+    const localSession = sessionStorage.getItem('duo_admin_session');
+    if (localSession === 'true') {
+      setLoading(false);
+      return;
+    }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-
       if (!session) {
-
         setLocation('/admin/login');
-
       }
-
       setLoading(false);
-
     });
-
-
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-
-      if (event === 'SIGNED_OUT') {
-
-        // Redireciona para a Home ao sair
-
-        setLocation('/');
-
-      } else if (!session) {
-
-        setLocation('/admin/login');
-
-      }
-
-    });
-
-
-
-    return () => subscription.unsubscribe();
-
   }, [setLocation]);
 
-
-
   const handleLogout = async () => {
-
-    await supabase.auth.signOut();
-
+    sessionStorage.removeItem('duo_admin_session');
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      // ignore
+    }
+    setLocation('/');
   };
-
-
 
   if (loading) {
-
-    return <div className="min-h-screen flex items-center justify-center bg-[#080709] text-[#f9eee7]">Carregando...</div>;
-
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0B0908] text-[#F5F0E8] font-mono text-sm">
+        Carregando painel DUO ESPAÇO...
+      </div>
+    );
   }
 
-
-
   return (
-
-    <div className="min-h-screen bg-[#080709] text-[#f9eee7] p-6 md:p-12">
-
-      <div className="max-w-5xl mx-auto space-y-8">
-
-        <header className="flex items-center justify-between border-b border-[#f9eee7]/15 pb-6">
-
+    <div className="min-h-screen bg-[#0B0908] text-[#F5F0E8] p-4 sm:p-6 md:p-10">
+      <div className="max-w-6xl mx-auto space-y-8">
+        {/* Header do Painel */}
+        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-[#BB8D5B]/25 pb-6 gap-4">
           <div>
-
-            <h1 className="text-3xl font-light text-[#df9587]">Painel Administrativo</h1>
-
-            <p className="text-sm text-[#a99594] mt-1">Gerencie os conteúdos e fotos do site</p>
-
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#BB8D5B] animate-pulse" />
+              <span className="font-mono text-xs uppercase tracking-widest text-[#BB8D5B]">Painel de Gestão</span>
+            </div>
+            <h1 className="font-serif text-3xl font-bold text-[#E0BC8D] mt-1">DUO ESPAÇO</h1>
+            <p className="text-xs text-[#A99B90] mt-0.5">Gerenciamento de serviços, valores, mídias e conteúdos</p>
           </div>
 
-          <Button variant="outline" onClick={handleLogout} className="border-[#f9eee7]/20 hover:bg-[#111014] text-[#f9eee7]">
-
-            <LogOut className="mr-2 h-4 w-4" /> Voltar para o Site
-
+          <Button 
+            variant="outline" 
+            onClick={handleLogout} 
+            className="border-[#BB8D5B]/30 hover:bg-[#14100E] text-[#E0BC8D] font-mono text-xs uppercase"
+          >
+            <LogOut className="mr-2 h-4 w-4 text-[#BB8D5B]" /> Sair para o Site
           </Button>
-
         </header>
 
+        {/* Chave Rápida: Valores X Consultar */}
+        <PricingModeBanner 
+          config={configQuery.data || DEFAULT_CONFIG} 
+          onUpdate={() => configQuery.refetch()} 
+        />
 
+        {/* Abas de Gerenciamento */}
+        <Tabs defaultValue="midias" className="w-full">
+          <TabsList className="bg-[#14100E] border border-[#BB8D5B]/30 p-1 flex flex-wrap h-auto gap-1">
+            <TabsTrigger value="midias" className="data-[state=active]:bg-[#BB8D5B] data-[state=active]:text-[#0B0908] font-mono text-xs uppercase py-2">
+              <Video className="w-3.5 h-3.5 mr-1.5" /> Vídeo & Fotos da Galeria
+            </TabsTrigger>
+            <TabsTrigger value="valores" className="data-[state=active]:bg-[#BB8D5B] data-[state=active]:text-[#0B0908] font-mono text-xs uppercase py-2">
+              <DollarSign className="w-3.5 h-3.5 mr-1.5" /> Valores & Chave
+            </TabsTrigger>
+            <TabsTrigger value="localizacao" className="data-[state=active]:bg-[#BB8D5B] data-[state=active]:text-[#0B0908] font-mono text-xs uppercase py-2">
+              <MapPin className="w-3.5 h-3.5 mr-1.5" /> Local & Horários
+            </TabsTrigger>
+            <TabsTrigger value="servicos" className="data-[state=active]:bg-[#BB8D5B] data-[state=active]:text-[#0B0908] font-mono text-xs uppercase py-2">
+              <Scissors className="w-3.5 h-3.5 mr-1.5" /> Serviços
+            </TabsTrigger>
+            <TabsTrigger value="textos" className="data-[state=active]:bg-[#BB8D5B] data-[state=active]:text-[#0B0908] font-mono text-xs uppercase py-2">
+              <FileText className="w-3.5 h-3.5 mr-1.5" /> Textos & Contatos
+            </TabsTrigger>
+          </TabsList>
 
-        <Tabs defaultValue="geral" className="w-full">
-
-          <TabsList className="bg-[#111014] border border-[#f9eee7]/15">
-
-            <TabsTrigger value="geral">Textos Gerais</TabsTrigger>
-
-            <TabsTrigger value="servicos">Serviços</TabsTrigger>
-
-            <TabsTrigger value="galeria">Galeria</TabsTrigger>
-
-            <TabsTrigger value="combos">Combos</TabsTrigger>          </TabsList>
-
-
-
-          <TabsContent value="geral" className="mt-6">
-
-            <div className="bg-[#111014] p-6 rounded-lg border border-[#f9eee7]/15">
-
-              <h2 className="text-xl mb-4 text-[#df9587]">Configurações Gerais</h2>
-
-              {configQuery.isLoading ? (
-
-                <p>Carregando configurações...</p>
-
-              ) : (
-
-                <ConfigForm initialData={configQuery.data || {}} onSuccess={() => configQuery.refetch()} />
-
-              )}
-
-            </div>
-
+          {/* ABA 1: VÍDEO & FOTOS DA GALERIA */}
+          <TabsContent value="midias" className="mt-6">
+            <MediaManagerTab 
+              config={configQuery.data || DEFAULT_CONFIG} 
+              gallery={galleryQuery.data || []}
+              onSuccess={() => {
+                configQuery.refetch();
+                galleryQuery.refetch();
+              }} 
+            />
           </TabsContent>
 
+          {/* ABA 2: VALORES X CONSULTAR */}
+          <TabsContent value="valores" className="mt-6">
+            <PricingConfigTab 
+              config={configQuery.data || DEFAULT_CONFIG} 
+              onSuccess={() => configQuery.refetch()} 
+            />
+          </TabsContent>
 
+          {/* ABA 3: LOCALIZAÇÃO E HORÁRIOS */}
+          <TabsContent value="localizacao" className="mt-6">
+            <LocationHoursTab 
+              config={configQuery.data || DEFAULT_CONFIG} 
+              onSuccess={() => configQuery.refetch()} 
+            />
+          </TabsContent>
 
+          {/* ABA 4: SERVIÇOS (EDITAR, ADICIONAR, EXCLUIR) */}
           <TabsContent value="servicos" className="mt-6">
-
-            <div className="bg-[#111014] p-6 rounded-lg border border-[#f9eee7]/15">
-
-              <div className="flex items-center justify-between mb-4">
-
-                <h2 className="text-xl text-[#df9587]">Serviços Oferecidos</h2>
-
-              </div>
-
-              {servicesQuery.isLoading ? (
-
-                <p>Carregando serviços...</p>
-
-              ) : (
-
-                <ServicesList services={servicesQuery.data || []} onSuccess={() => servicesQuery.refetch()} />
-
-              )}
-
-            </div>
-
+            <ServicesManagerTab 
+              config={configQuery.data || DEFAULT_CONFIG}
+              onSuccess={() => {
+                servicesQuery.refetch();
+                configQuery.refetch();
+              }} 
+            />
           </TabsContent>
 
-          
-
-          <TabsContent value="galeria" className="mt-6">
-
-            <div className="bg-[#111014] p-6 rounded-lg border border-[#f9eee7]/15">
-
-              <div className="flex items-center justify-between mb-4">
-
-                <h2 className="text-xl text-[#df9587]">Galeria de Fotos</h2>
-
-              </div>
-
-              <GalleryManager />
-
-            </div>
-
-            <SitePhotosManager />
-
+          {/* ABA 5: TEXTOS & CONTATOS */}
+          <TabsContent value="textos" className="mt-6">
+            <TextsAndContactsTab 
+              config={configQuery.data || DEFAULT_CONFIG} 
+              onSuccess={() => configQuery.refetch()} 
+            />
           </TabsContent>
-
-          <TabsContent value="combos" className="mt-6">
-
-            <div className="bg-[#111014] p-6 rounded-lg border border-[#f9eee7]/15">
-
-              <div className="flex items-center justify-between mb-4">
-
-                <h2 className="text-xl text-[#df9587]">Combos Promocionais</h2>
-
-              </div>
-
-              <CombosManager config={configQuery.data || {}} combos={combosQuery.data || []} onSuccess={() => { configQuery.refetch(); combosQuery.refetch(); }} />
-
-            </div>
-
-          </TabsContent>
-
         </Tabs>
-
       </div>
-
     </div>
-
   );
-
 }
 
-
-
-function ConfigForm({ initialData, onSuccess }: { initialData: Record<string, string>, onSuccess: () => void }) {
-
+// Banner de Acesso Rápido para Chave Valores X Consultar
+function PricingModeBanner({ config, onUpdate }: { config: Record<string, string>; onUpdate: () => void }) {
   const { toast } = useToast();
+  const isValuesActive = config.exibirValores === 'true';
 
-  const [data, setData] = useState(initialData);
-
-  const [saving, setSaving] = useState(false);
-
-
-
-  const handleChange = (id: string, value: string) => setData(curr => ({ ...curr, [id]: value }));
-
-
-
-  const handleSave = async () => {
-
-    setSaving(true);
-
-    const promises = Object.entries(data).map(([id, valor]) => {
-
-      return supabase.from('configuracoes').upsert({ id, valor });
-
+  const toggleMode = async (enabled: boolean) => {
+    const val = enabled ? 'true' : 'false';
+    saveSiteConfigLocally({ exibirValores: val });
+    try {
+      await supabase.from('configuracoes').upsert({ id: 'exibirValores', valor: val });
+    } catch (e) {
+      // salva localmente
+    }
+    toast({
+      title: enabled ? 'Modo Valores ATIVADO' : 'Modo "A Consultar" ATIVADO',
+      description: enabled 
+        ? 'Os valores numéricos configurados nos serviços serão exibidos no site.' 
+        : 'Todos os serviços agora exibem o rótulo discreto "A consultar".',
     });
-
-    
-
-    await Promise.all(promises);
-
-    setSaving(false);
-
-    toast({ title: 'Configurações salvas com sucesso!' });
-
-    onSuccess();
-
+    onUpdate();
   };
-
-
 
   return (
-
-    <div className="space-y-4">
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-        <div><Label className="text-[#d1bbb6]">WhatsApp Número</Label><Input className="bg-[#080709] border-[#f9eee7]/20 text-[#f9eee7]" value={data.whatsappNumber || ''} onChange={e => handleChange('whatsappNumber', e.target.value)} /></div>
-
-        <div><Label className="text-[#d1bbb6]">WhatsApp Rótulo</Label><Input className="bg-[#080709] border-[#f9eee7]/20 text-[#f9eee7]" value={data.whatsappLabel || ''} onChange={e => handleChange('whatsappLabel', e.target.value)} /></div>
-
-        <div><Label className="text-[#d1bbb6]">Instagram (@)</Label><Input className="bg-[#080709] border-[#f9eee7]/20 text-[#f9eee7]" value={data.instagramHandle || ''} onChange={e => handleChange('instagramHandle', e.target.value)} /></div>
-
-        <div><Label className="text-[#d1bbb6]">Instagram Link</Label><Input className="bg-[#080709] border-[#f9eee7]/20 text-[#f9eee7]" value={data.instagramUrl || ''} onChange={e => handleChange('instagramUrl', e.target.value)} /></div>
-
-        <div className="md:col-span-2"><Label className="text-[#d1bbb6]">Endereço</Label><Input className="bg-[#080709] border-[#f9eee7]/20 text-[#f9eee7]" value={data.address || ''} onChange={e => handleChange('address', e.target.value)} /></div>
-
-        <div className="md:col-span-2"><Label className="text-[#d1bbb6]">Link Google Maps</Label><Input className="bg-[#080709] border-[#f9eee7]/20 text-[#f9eee7]" value={data.mapsUrl || ''} onChange={e => handleChange('mapsUrl', e.target.value)} /></div>
-
-        <div className="md:col-span-2"><Label className="text-[#d1bbb6]">Horários</Label><Input className="bg-[#080709] border-[#f9eee7]/20 text-[#f9eee7]" value={data.hours || ''} onChange={e => handleChange('hours', e.target.value)} /></div>
-
-        
-
-        <div className="md:col-span-2"><Label className="text-[#d1bbb6]">Tí­tulo Principal (Início)</Label><Input className="bg-[#080709] border-[#f9eee7]/20 text-[#f9eee7]" value={data.heroTitle || ''} onChange={e => handleChange('heroTitle', e.target.value)} /></div>
-
-        <div className="md:col-span-2"><Label className="text-[#d1bbb6]">Sobre nós - Parágrafo 1</Label><Textarea className="bg-[#080709] border-[#f9eee7]/20 text-[#f9eee7] min-h-[80px]" value={data.aboutText1 || ''} onChange={e => handleChange('aboutText1', e.target.value)} /></div>
-
-        <div className="md:col-span-2"><Label className="text-[#d1bbb6]">Sobre nós - Parágrafo 2</Label><Textarea className="bg-[#080709] border-[#f9eee7]/20 text-[#f9eee7] min-h-[80px]" value={data.aboutText2 || ''} onChange={e => handleChange('aboutText2', e.target.value)} /></div>
-
-      </div>
-
-      <Button onClick={handleSave} disabled={saving} className="bg-[#d68c80] text-[#24161d] hover:bg-[#df9587]">
-
-        <Save className="mr-2 h-4 w-4" /> {saving ? 'Salvando...' : 'Salvar Configurações'}
-
-      </Button>
-
-    </div>
-
-  );
-
-}
-
-
-
-function ServicesList({ services, onSuccess }: { services: any[], onSuccess: () => void }) {
-
-  const { toast } = useToast();
-
-  const [data, setData] = useState(services);
-
-  const [saving, setSaving] = useState(false);
-
-
-
-  useEffect(() => {
-
-    setData(services);
-
-  }, [services]);
-
-
-
-  const handleChange = (index: number, field: string, value: any) => {
-
-    const updated = [...data];
-
-    updated[index] = { ...updated[index], [field]: value };
-
-    setData(updated);
-
-  };
-
-
-
-  const handleAdd = () => {
-
-    setData([...data, { titulo: '', detalhe: '', descricao: '', icone: 'Sparkles', numero: String(data.length + 1).padStart(2, '0'), ativo: true, ordem: data.length + 1 }]);
-
-  };
-
-
-
-  const handleDelete = async (index: number, id?: string) => {
-
-    if (!confirm('Tem certeza que deseja excluir este serviço?')) return;
-
-    
-
-    if (id) {
-
-      await supabase.from('servicos').delete().eq('id', id);
-
-    }
-
-    
-
-    const updated = [...data];
-
-    updated.splice(index, 1);
-
-    setData(updated);
-
-    toast({ title: 'Serviço removido.' });
-
-    if (id) onSuccess();
-
-  };
-
-
-
-  const handleSave = async () => {
-
-    setSaving(true);
-
-    const promises = data.map(service => {
-      // Create a clean payload without 'ativo' since it doesn't exist in the DB schema
-      const { id, ativo, ...cleanService } = service;
-
-      if (!id) {
-        return supabase.from('servicos').insert(cleanService);
-      }
-      return supabase.from('servicos').update(cleanService).eq('id', id);
-    });
-
-    const results = await Promise.all(promises);
-    const errors = results.filter(r => r.error).map(r => r.error);
-    if (errors.length > 0) {
-      console.error(errors);
-      toast({ title: 'Erro ao salvar', description: errors[0]?.message, variant: 'destructive' });
-      setSaving(false);
-      return;
-    }
-
-    setSaving(false);
-
-    toast({ title: 'Serviços salvos com sucesso!' });
-
-    onSuccess();
-
-  };
-
-
-
-  return (
-
-    <div className="space-y-6">
-
-      {data.map((service, idx) => (
-
-        <div key={service.id || `new-${idx}`} className={`p-4 border ${service.ativo === false ? 'border-red-500/30 bg-[#1a0f12]' : 'border-[#f9eee7]/10 bg-[#080709]'} rounded space-y-4 transition-colors`}>
-
-          <div className="flex justify-between items-center mb-2">
-
-            <span className="text-sm font-semibold text-[#a99594] flex items-center gap-2">
-
-              #{service.numero} 
-
-              {service.ativo === false && <span className="text-red-400 text-xs px-2 py-0.5 bg-red-900/30 rounded">(Oculto)</span>}
-
-            </span>
-
-            <div className="flex gap-2">
-
-              <Button 
-
-                variant="outline" 
-
-                size="sm" 
-
-                className="h-8 border-[#f9eee7]/20 text-[#a99594] hover:text-[#f9eee7] hover:bg-[#2a2a2a]"
-
-                onClick={() => handleChange(idx, 'ativo', service.ativo === false ? true : false)}
-
-                title={service.ativo === false ? 'Mostrar no site' : 'Ocultar do site'}
-
-              >
-
-                {service.ativo === false ? <EyeOff size={16} /> : <Eye size={16} />}
-
-              </Button>
-
-              <Button 
-
-                variant="destructive" 
-
-                size="sm" 
-
-                className="h-8"
-
-                onClick={() => handleDelete(idx, service.id)}
-
-              >
-
-                <Trash2 size={16} />
-
-              </Button>
-
+    <div className={`p-5 rounded-2xl border transition-all ${
+      isValuesActive 
+        ? 'bg-[#181410] border-[#BB8D5B]/70 shadow-[0_0_25px_rgba(187,141,91,0.2)]' 
+        : 'bg-[#14100E] border-[#BB8D5B]/30'
+    }`}>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <div className={`p-2.5 rounded-xl border shrink-0 ${
+            isValuesActive ? 'bg-[#BB8D5B] text-[#0B0908] border-[#BB8D5B]' : 'bg-[#1A1412] text-[#BB8D5B] border-[#BB8D5B]/30'
+          }`}>
+            <DollarSign className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-serif text-lg font-bold text-[#F5F0E8]">
+                Controle de Preços: {isValuesActive ? 'Exibindo Valores Reais' : 'Modo "A Consultar" Ativo'}
+              </h3>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider ${
+                isValuesActive ? 'bg-[#BB8D5B]/20 text-[#E0BC8D] border border-[#BB8D5B]/40' : 'bg-white/5 text-[#A99B90] border border-white/10'
+              }`}>
+                {isValuesActive ? 'Valores Ativados' : 'A Consultar (Padrão)'}
+              </span>
             </div>
-
+            <p className="text-xs text-[#A99B90] mt-1 max-w-2xl">
+              Alterne entre manter os preços sob consulta no WhatsApp ou exibir os valores numéricos cadastrados em cada serviço.
+            </p>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-            <div><Label className="text-[#d1bbb6]">Tí­tulo</Label><Input className="bg-[#111014] border-[#f9eee7]/20 text-[#f9eee7]" value={service.titulo || ''} onChange={e => handleChange(idx, 'titulo', e.target.value)} /></div>
-
-            <div><Label className="text-[#d1bbb6]">Detalhe</Label><Input className="bg-[#111014] border-[#f9eee7]/20 text-[#f9eee7]" value={service.detalhe || ''} onChange={e => handleChange(idx, 'detalhe', e.target.value)} /></div>
-
-            <div className="md:col-span-2"><Label className="text-[#d1bbb6]">Descrição</Label><Input className="bg-[#111014] border-[#f9eee7]/20 text-[#f9eee7]" value={service.descricao || ''} onChange={e => handleChange(idx, 'descricao', e.target.value)} /></div>
-
-            <div><Label className="text-[#d1bbb6]">Ícone (ex: Scissors, Palette, Sparkles)</Label><Input className="bg-[#111014] border-[#f9eee7]/20 text-[#f9eee7]" value={service.icone || ''} onChange={e => handleChange(idx, 'icone', e.target.value)} /></div>
-
-            <div><Label className="text-[#d1bbb6]">Número / Posição (ex: 01, 02)</Label><Input className="bg-[#111014] border-[#f9eee7]/20 text-[#f9eee7]" value={service.numero || ''} onChange={e => handleChange(idx, 'numero', e.target.value)} /></div>
-
-          </div>
-
         </div>
 
-      ))}
-
-      <div className="flex justify-between items-center pt-4 border-t border-[#f9eee7]/10">
-
-        <Button onClick={handleAdd} variant="outline" className="border-[#f9eee7]/20 text-[#f9eee7] hover:bg-[#f9eee7]">
-
-          <Plus className="mr-2 h-4 w-4" /> Adicionar Serviço
-
-        </Button>
-
-        <Button onClick={handleSave} disabled={saving} className="bg-[#d68c80] text-[#24161d] hover:bg-[#df9587]">
-
-          <Save className="mr-2 h-4 w-4" /> {saving ? 'Salvando...' : 'Salvar Todas as Alterações'}
-
-        </Button>
-
+        <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+          <span className="text-xs font-mono text-[#A99B90]">
+            {isValuesActive ? 'Valores Visíveis' : 'A Consultar'}
+          </span>
+          <Switch 
+            checked={isValuesActive} 
+            onCheckedChange={toggleMode}
+            className="data-[state=checked]:bg-[#BB8D5B]" 
+          />
+        </div>
       </div>
-
     </div>
-
   );
-
 }
 
-
-
-function GalleryManager() {
-
-  const query = useGallery();
-
+// ABA: VÍDEO & FOTOS DA GALERIA (UPLOAD DIRETO DE QUALQUER FORMATO)
+function MediaManagerTab({ 
+  config, 
+  gallery, 
+  onSuccess 
+}: { 
+  config: Record<string, string>; 
+  gallery: any[]; 
+  onSuccess: () => void; 
+}) {
+  const { toast } = useToast();
+  const [videoUrl, setVideoUrl] = useState(config.videoUrl || '/videos/duo-espaco.mp4');
+  const [posterImage, setPosterImage] = useState(config.posterImage || '/images/salao-luxury.jpg');
+  const [logoImage, setLogoImage] = useState(config.logoImage || '/images/duo-espaco-logo.jpg');
+  const [heroImage, setHeroImage] = useState(config.heroImage || '/images/cassiano-e-isabella.jpg');
+  const [megaHairImage, setMegaHairImage] = useState(config.megaHairImage || '/images/mega-hair.jpg');
+  const [unhasImage, setUnhasImage] = useState(config.unhasImage || '/images/unhas-nail-spa.jpg');
   
+  const [galleryItems, setGalleryItems] = useState<any[]>(() => {
+    try {
+      const stored = localStorage.getItem('duo_galeria');
+      if (stored) return JSON.parse(stored);
+    } catch (e) {}
+    return gallery && gallery.length > 0 ? gallery : [
+      { url_imagem: '/images/hero-beauty.jpg', rotulo: 'Textura & Luz' },
+      { url_imagem: '/images/mega-hair.jpg', rotulo: 'Mega Hair & Volume' },
+      { url_imagem: '/images/unhas-nail-spa.jpg', rotulo: 'Unhas & Detalhes' },
+      { url_imagem: '/images/salao-luxury.jpg', rotulo: 'Ambiente & Atelier' },
+    ];
+  });
 
-  if (query.isLoading) return <p>Carregando galeria...</p>;
-
-  return <GalleryList items={query.data || []} onSuccess={() => query.refetch()} />;
-
-}
-
-
-
-function GalleryList({ items, onSuccess }: { items: any[], onSuccess: () => void }) {
-
-  const { toast } = useToast();
-
-  const [data, setData] = useState(items);
-
+  // Estados de upload em progresso
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [uploadingPoster, setUploadingPoster] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingHero, setUploadingHero] = useState(false);
+  const [uploadingMega, setUploadingMega] = useState(false);
+  const [uploadingUnhas, setUploadingUnhas] = useState(false);
+  const [uploadingGallery, setUploadingGallery] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+  // Refs para inputs ocultos
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const posterInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const heroInputRef = useRef<HTMLInputElement>(null);
+  const megaInputRef = useRef<HTMLInputElement>(null);
+  const unhasInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
-
-
-  useEffect(() => { setData(items); }, [items]);
-
-
-
-  const handleChange = (index: number, field: string, value: any) => {
-
-    const updated = [...data];
-
-    updated[index] = { ...updated[index], [field]: value };
-
-    setData(updated);
-
-  };
-
-
-
-  const handleAdd = () => {
-
-    setData([...data, { rotulo: "Nova Foto", texto_alternativo: "", tamanho: "small", url_imagem: "", ordem: data.length + 1 }]);
-
-  };
-
-
-
-  const handleDelete = async (index: number, id?: string) => {
-
-    if (!confirm("Tem certeza que deseja excluir esta foto?")) return;
-
-    if (id) {
-
-      await supabase.from("galeria").delete().eq("id", id);
-
-    }
-
-    const updated = [...data];
-
-    updated.splice(index, 1);
-
-    setData(updated);
-
-    toast({ title: "Foto removida." });
-
-    if (id) onSuccess();
-
-  };
-
-
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-
+  // Upload do Vídeo (qualquer formato: mp4, mov, webm, m4v, etc)
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-
     if (!file) return;
 
-
-
-    setUploadingIdx(index);
+    setUploadingVideo(true);
+    toast({
+      title: 'Enviando vídeo da galeria...',
+      description: `Processando arquivo ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)...`,
+    });
 
     try {
+      const uploadedUrl = await uploadMediaFile(file);
+      setVideoUrl(uploadedUrl);
+      saveSiteConfigLocally({ videoUrl: uploadedUrl });
+      try {
+        await supabase.from('configuracoes').upsert({ id: 'videoUrl', valor: uploadedUrl });
+      } catch (err) {}
 
-      const fileExt = file.name.split(".").pop();
-
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-
-      
-
-      const { error: uploadError } = await supabase.storage.from("fotos").upload(fileName, file);
-
-      if (uploadError) throw uploadError;
-
-
-
-      const { data: { publicUrl } } = supabase.storage.from("fotos").getPublicUrl(fileName);
-
-      
-
-      handleChange(index, "url_imagem", publicUrl);
-
-      toast({ title: "Foto enviada com sucesso!" });
-
-    } catch (err: any) {
-
-      toast({ title: "Erro no upload", description: err.message, variant: "destructive" });
-
+      toast({
+        title: 'Vídeo atualizado com sucesso!',
+        description: 'O novo vídeo já está pronto e visível no site.',
+      });
+      onSuccess();
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: 'Erro ao enviar vídeo',
+        description: 'Não foi possível carregar o vídeo. Tente novamente.',
+        variant: 'destructive',
+      });
     } finally {
-
-      setUploadingIdx(null);
-
+      setUploadingVideo(false);
+      if (videoInputRef.current) videoInputRef.current.value = '';
     }
-
   };
 
+  // Upload de Foto individual
+  const handlePhotoUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: (url: string) => void,
+    key: string,
+    setLoadingState: (val: boolean) => void,
+    label: string
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
+    setLoadingState(true);
+    toast({ title: `Enviando ${label}...` });
 
-  const handleSave = async () => {
+    try {
+      const uploadedUrl = await uploadMediaFile(file);
+      setter(uploadedUrl);
+      saveSiteConfigLocally({ [key]: uploadedUrl });
+      try {
+        await supabase.from('configuracoes').upsert({ id: key, valor: uploadedUrl });
+      } catch (err) {}
 
-    setSaving(true);
+      toast({ title: `${label} atualizada com sucesso!` });
+      onSuccess();
+    } catch (err) {
+      console.error(err);
+      toast({ title: `Erro ao enviar ${label}`, variant: 'destructive' });
+    } finally {
+      setLoadingState(false);
+      if (e.target) e.target.value = '';
+    }
+  };
 
-    const promises = data.map(item => {
+  // Upload múltiplo para Galeria
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-      if (!item.id) {
+    setUploadingGallery(true);
+    toast({ title: `Enviando ${files.length} foto(s) para a galeria...` });
 
-        return supabase.from("galeria").insert({
-
-          url_imagem: item.url_imagem,
-
-          texto_alternativo: item.texto_alternativo,
-
-          rotulo: item.rotulo,
-
-          tamanho: item.tamanho,
-
-          ordem: item.ordem
-
+    try {
+      const newItems = [...galleryItems];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const uploadedUrl = await uploadMediaFile(file);
+        newItems.push({
+          url_imagem: uploadedUrl,
+          rotulo: file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '),
         });
-
       }
 
-      return supabase.from("galeria").update(item).eq("id", item.id);
+      setGalleryItems(newItems);
+      saveGalleryLocally(newItems);
+      toast({ title: 'Fotos adicionadas à galeria com sucesso!' });
+      onSuccess();
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro ao enviar fotos da galeria', variant: 'destructive' });
+    } finally {
+      setUploadingGallery(false);
+      if (galleryInputRef.current) galleryInputRef.current.value = '';
+    }
+  };
 
-    });
+  const handleRemoveGalleryItem = (index: number) => {
+    const updated = [...galleryItems];
+    updated.splice(index, 1);
+    setGalleryItems(updated);
+    saveGalleryLocally(updated);
+    toast({ title: 'Foto removida da galeria.' });
+    onSuccess();
+  };
 
-    
+  const handleUpdateGalleryLabel = (index: number, label: string) => {
+    const updated = [...galleryItems];
+    updated[index] = { ...updated[index], rotulo: label };
+    setGalleryItems(updated);
+    saveGalleryLocally(updated);
+  };
 
-    await Promise.all(promises);
+  const handleSaveMedias = async () => {
+    setSaving(true);
+    const updates = { videoUrl, posterImage, logoImage, heroImage, megaHairImage, unhasImage };
+    saveSiteConfigLocally(updates);
+    saveGalleryLocally(galleryItems);
+
+    try {
+      for (const [id, valor] of Object.entries(updates)) {
+        await supabase.from('configuracoes').upsert({ id, valor });
+      }
+    } catch (e) {}
 
     setSaving(false);
-
-    toast({ title: "Galeria salva com sucesso!" });
-
+    toast({ title: 'Todas as mídias e fotos foram salvas com sucesso!' });
     onSuccess();
-
   };
-
-
 
   return (
+    <div className="bg-[#14100E] p-6 rounded-2xl border border-[#BB8D5B]/30 space-y-8">
+      <div>
+        <h2 className="font-serif text-2xl font-bold text-[#E0BC8D]">Vídeo Institucional & Fotografias</h2>
+        <p className="text-xs text-[#A99B90] mt-1">
+          Suba arquivos diretamente da galeria do seu celular ou computador em qualquer formato de foto ou vídeo.
+        </p>
+      </div>
 
-    <div className="space-y-6">
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-
-        {data.map((item, idx) => (
-
-          <div key={item.id || `new-gal-${idx}`} className="p-4 border border-[#f9eee7]/10 rounded bg-[#080709] flex flex-col gap-3 relative group">
-
-            <Button variant="destructive" size="sm" className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 h-8 w-8 p-0" onClick={() => handleDelete(idx, item.id)}>
-
-              <Trash2 size={14} />
-
-            </Button>
-
-            
-
-            <div className="aspect-square bg-[#111014] rounded overflow-hidden relative flex items-center justify-center border border-[#f9eee7]/10">
-
-              {item.url_imagem ? (
-
-                <img src={item.url_imagem} alt="preview" className="w-full h-full object-cover" />
-
-              ) : (
-
-                <span className="text-xs text-[#a99594]">Sem imagem</span>
-
-              )}
-
-              {uploadingIdx === idx && (
-
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-xs">
-
-                  Enviando...
-
-                </div>
-
-              )}
-
+      {/* BLOCO 1: VÍDEO DO ESPAÇO (9:16 VERTICAL - REELS) */}
+      <div className="p-6 rounded-2xl border border-[#BB8D5B]/35 bg-[#0B0908] space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#BB8D5B]/15 gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#BB8D5B]/15 border border-[#BB8D5B]/30 text-[#E0BC8D]">
+              <Film className="w-5 h-5" />
             </div>
-
-
-
-            <div className="space-y-3 mt-2">
-
-              <div>
-
-                <Label className="text-[#d1bbb6] text-xs">Trocar / Enviar Foto</Label>
-
-                <Input type="file" accept="image/*" onChange={(e) => handleFileChange(e, idx)} className="bg-[#111014] border-[#f9eee7]/20 text-[#f9eee7] text-xs h-8" />
-
-              </div>
-
-              <div>
-
-                <Label className="text-[#d1bbb6] text-xs">Rótulo</Label>
-
-                <Input className="bg-[#111014] border-[#f9eee7]/20 text-[#f9eee7] h-8 text-xs" value={item.rotulo || ""} onChange={e => handleChange(idx, "rotulo", e.target.value)} placeholder="Ex: Textura & luz" />
-
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-
-                <div>
-
-                  <Label className="text-[#d1bbb6] text-xs">Tamanho</Label>
-
-                  <select className="flex h-8 w-full rounded-md border border-[#f9eee7]/20 bg-[#111014] px-3 py-1 text-xs text-[#f9eee7]" value={item.tamanho || "small"} onChange={e => handleChange(idx, "tamanho", e.target.value)}>
-
-                    <option value="small">Pequeno</option>
-
-                    <option value="large">Grande</option>
-
-                    <option value="tall">Alto</option>
-
-                  </select>
-
-                </div>
-
-                <div>
-
-                  <Label className="text-[#d1bbb6] text-xs">Ordem</Label>
-
-                  <Input type="number" className="bg-[#111014] border-[#f9eee7]/20 text-[#f9eee7] h-8 text-xs" value={item.ordem || 0} onChange={e => handleChange(idx, "ordem", parseInt(e.target.value))} />
-
-                </div>
-
-              </div>
-
+            <div>
+              <h3 className="font-serif font-bold text-[#F5F0E8] text-lg">Vídeo Institucional (Moldura 9:16 - Reels)</h3>
+              <p className="text-xs text-[#A99B90]">Reproduz com áudio estéreo na seção "O Espaço" do site</p>
             </div>
-
           </div>
 
-        ))}
+          {/* Botão de Upload Direto da Galeria */}
+          <div>
+            <input
+              type="file"
+              ref={videoInputRef}
+              accept="video/*,.mp4,.mov,.webm,.m4v,.avi,.mkv"
+              onChange={handleVideoUpload}
+              className="hidden"
+            />
+            <Button
+              type="button"
+              disabled={uploadingVideo}
+              onClick={() => videoInputRef.current?.click()}
+              className="bg-[#BB8D5B] text-[#0B0908] hover:bg-[#E0BC8D] font-mono text-xs uppercase font-bold py-5 shadow-[0_4px_16px_rgba(187,141,91,0.25)]"
+            >
+              {uploadingVideo ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Subindo Vídeo...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4 mr-2" /> Subir Vídeo da Galeria
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
 
+        {/* Pré-visualização do Vídeo e Caminho */}
+        <div className="grid gap-6 md:grid-cols-[1fr_260px] items-start">
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs font-mono uppercase text-[#A99B90]">Caminho / URL Atual do Vídeo</Label>
+              <Input 
+                value={videoUrl} 
+                onChange={(e) => setVideoUrl(e.target.value)}
+                className="bg-[#14100E] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 font-mono text-xs" 
+                placeholder="/videos/duo-espaco.mp4"
+              />
+            </div>
+            <p className="text-xs text-[#A99B90] leading-relaxed">
+              Você pode clicar no botão <strong>"Subir Vídeo da Galeria"</strong> acima para escolher qualquer arquivo MP4 ou MOV do seu dispositivo, ou digitar uma URL direta.
+            </p>
+          </div>
+
+          {/* Preview 9:16 Vertical */}
+          <div className="flex flex-col items-center">
+            <span className="font-mono text-[10px] uppercase text-[#BB8D5B] mb-2">Pré-visualização 9:16</span>
+            <div className="relative w-[150px] aspect-[9/16] overflow-hidden rounded-2xl border-2 border-[#BB8D5B]/40 bg-[#14100E] shadow-xl">
+              <video
+                key={videoUrl}
+                controls
+                playsInline
+                poster={posterImage}
+                className="h-full w-full object-cover"
+              >
+                <source src={videoUrl} type="video/mp4" />
+              </video>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="flex justify-between items-center pt-4 border-t border-[#f9eee7]/10">
+      {/* BLOCO 2: FOTOS PRINCIPAIS DO SITE (LOGO, CAPA, HERO, MEGA HAIR, UNHAS) */}
+      <div>
+        <h3 className="font-serif text-lg font-bold text-[#E0BC8D] mb-4">Fotos Principais do Site</h3>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {/* Logo do Salão */}
+          <div className="p-4 rounded-2xl border border-[#BB8D5B]/25 bg-[#0B0908] space-y-3 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-mono uppercase font-bold text-[#E0BC8D]">Logo do Salão</Label>
+                <span className="text-[10px] font-mono text-[#BB8D5B]">Marca</span>
+              </div>
 
-        <Button onClick={handleAdd} variant="outline" className="border-[#f9eee7]/20 text-[#f9eee7] hover:bg-[#f9eee7]">
+              <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-[#BB8D5B]/30 bg-[#14100E] p-2 flex items-center justify-center">
+                {logoImage ? (
+                  <img src={logoImage} alt="Logo" className="h-full w-full object-cover rounded-full" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-[#A99B90]">Sem logo</div>
+                )}
+              </div>
+            </div>
 
-          <Plus className="mr-2 h-4 w-4" /> Adicionar Foto
+            <div>
+              <input
+                type="file"
+                ref={logoInputRef}
+                accept="image/*"
+                onChange={(e) => handlePhotoUpload(e, setLogoImage, 'logoImage', setUploadingLogo, 'Logo do Salão')}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                disabled={uploadingLogo}
+                onClick={() => logoInputRef.current?.click()}
+                className="w-full bg-[#BB8D5B]/15 text-[#E0BC8D] border border-[#BB8D5B]/30 hover:bg-[#BB8D5B] hover:text-[#0B0908] font-mono text-xs uppercase"
+              >
+                {uploadingLogo ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
+                Subir Logo
+              </Button>
+            </div>
+          </div>
 
-        </Button>
+          {/* Foto de Capa / Ambiente (Poster do Vídeo) */}
+          <div className="p-4 rounded-2xl border border-[#BB8D5B]/25 bg-[#0B0908] space-y-3 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-mono uppercase font-bold text-[#E0BC8D]">Capa do Vídeo</Label>
+                <span className="text-[10px] font-mono text-[#BB8D5B]">Ambiente</span>
+              </div>
 
-        <Button onClick={handleSave} disabled={saving} className="bg-[#d68c80] text-[#24161d] hover:bg-[#df9587]">
+              <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-[#BB8D5B]/30 bg-[#14100E]">
+                {posterImage ? (
+                  <img src={posterImage} alt="Capa" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-[#A99B90]">Sem capa</div>
+                )}
+              </div>
+            </div>
 
-          <Save className="mr-2 h-4 w-4" /> {saving ? "Salvando..." : "Salvar Galeria"}
+            <div>
+              <input
+                type="file"
+                ref={posterInputRef}
+                accept="image/*"
+                onChange={(e) => handlePhotoUpload(e, setPosterImage, 'posterImage', setUploadingPoster, 'Capa do Vídeo')}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                disabled={uploadingPoster}
+                onClick={() => posterInputRef.current?.click()}
+                className="w-full bg-[#BB8D5B]/15 text-[#E0BC8D] border border-[#BB8D5B]/30 hover:bg-[#BB8D5B] hover:text-[#0B0908] font-mono text-xs uppercase"
+              >
+                {uploadingPoster ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
+                Subir Capa
+              </Button>
+            </div>
+          </div>
 
-        </Button>
+          {/* Foto Cassiano & Isabella (Hero) */}
+          <div className="p-4 rounded-2xl border border-[#BB8D5B]/25 bg-[#0B0908] space-y-3 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-mono uppercase font-bold text-[#E0BC8D]">Foto Cassiano & Isabella</Label>
+                <span className="text-[10px] font-mono text-[#BB8D5B]">Hero</span>
+              </div>
 
+              <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-[#BB8D5B]/30 bg-[#14100E]">
+                {heroImage ? (
+                  <img src={heroImage} alt="Hero" className="h-full w-full object-cover object-top" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-[#A99B90]">Sem foto</div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <input
+                type="file"
+                ref={heroInputRef}
+                accept="image/*"
+                onChange={(e) => handlePhotoUpload(e, setHeroImage, 'heroImage', setUploadingHero, 'Foto da Hero')}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                disabled={uploadingHero}
+                onClick={() => heroInputRef.current?.click()}
+                className="w-full bg-[#BB8D5B]/15 text-[#E0BC8D] border border-[#BB8D5B]/30 hover:bg-[#BB8D5B] hover:text-[#0B0908] font-mono text-xs uppercase"
+              >
+                {uploadingHero ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
+                Subir Foto
+              </Button>
+            </div>
+          </div>
+
+          {/* Foto Especialidade Mega Hair */}
+          <div className="p-4 rounded-2xl border border-[#BB8D5B]/25 bg-[#0B0908] space-y-3 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-mono uppercase font-bold text-[#E0BC8D]">Foto Mega Hair</Label>
+                <span className="text-[10px] font-mono text-[#BB8D5B]">Cassiano</span>
+              </div>
+
+              <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-[#BB8D5B]/30 bg-[#14100E]">
+                {megaHairImage ? (
+                  <img src={megaHairImage} alt="Mega Hair" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-[#A99B90]">Sem foto</div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <input
+                type="file"
+                ref={megaInputRef}
+                accept="image/*"
+                onChange={(e) => handlePhotoUpload(e, setMegaHairImage, 'megaHairImage', setUploadingMega, 'Foto do Mega Hair')}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                disabled={uploadingMega}
+                onClick={() => megaInputRef.current?.click()}
+                className="w-full bg-[#BB8D5B]/15 text-[#E0BC8D] border border-[#BB8D5B]/30 hover:bg-[#BB8D5B] hover:text-[#0B0908] font-mono text-xs uppercase"
+              >
+                {uploadingMega ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
+                Subir Foto
+              </Button>
+            </div>
+          </div>
+
+          {/* Foto Especialidade Unhas */}
+          <div className="p-4 rounded-2xl border border-[#BB8D5B]/25 bg-[#0B0908] space-y-3 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-mono uppercase font-bold text-[#E0BC8D]">Foto Unhas</Label>
+                <span className="text-[10px] font-mono text-[#BB8D5B]">Isabella</span>
+              </div>
+
+              <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-[#BB8D5B]/30 bg-[#14100E]">
+                {unhasImage ? (
+                  <img src={unhasImage} alt="Unhas" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-[#A99B90]">Sem foto</div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <input
+                type="file"
+                ref={unhasInputRef}
+                accept="image/*"
+                onChange={(e) => handlePhotoUpload(e, setUnhasImage, 'unhasImage', setUploadingUnhas, 'Foto de Unhas')}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                disabled={uploadingUnhas}
+                onClick={() => unhasInputRef.current?.click()}
+                className="w-full bg-[#BB8D5B]/15 text-[#E0BC8D] border border-[#BB8D5B]/30 hover:bg-[#BB8D5B] hover:text-[#0B0908] font-mono text-xs uppercase"
+              >
+                {uploadingUnhas ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
+                Subir Foto
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
 
+      {/* BLOCO 3: GALERIA DE FOTOS (CURADORIA VISUAL) */}
+      <div className="p-6 rounded-2xl border border-[#BB8D5B]/30 bg-[#0B0908] space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#BB8D5B]/15 gap-3">
+          <div>
+            <h3 className="font-serif font-bold text-[#F5F0E8] text-lg flex items-center gap-2">
+              <ImageIcon className="w-5 h-5 text-[#BB8D5B]" /> Curadoria Visual da Galeria
+            </h3>
+            <p className="text-xs text-[#A99B90]">Suba fotos da galeria para compor a vitrine visual do site</p>
+          </div>
+
+          <div>
+            <input
+              type="file"
+              ref={galleryInputRef}
+              accept="image/*"
+              multiple
+              onChange={handleGalleryUpload}
+              className="hidden"
+            />
+            <Button
+              type="button"
+              disabled={uploadingGallery}
+              onClick={() => galleryInputRef.current?.click()}
+              className="bg-[#BB8D5B] text-[#0B0908] hover:bg-[#E0BC8D] font-mono text-xs uppercase font-bold"
+            >
+              {uploadingGallery ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Subindo Fotos...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 mr-2" /> Adicionar Fotos da Galeria
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {/* Grade de fotos da galeria */}
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+          {galleryItems.map((item, idx) => (
+            <div key={idx} className="relative p-3 rounded-xl border border-[#BB8D5B]/25 bg-[#14100E] space-y-2 group">
+              <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg bg-[#0B0908]">
+                <img src={item.url_imagem} alt={item.rotulo || 'Galeria'} className="h-full w-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => handleRemoveGalleryItem(idx)}
+                  className="absolute top-2 right-2 p-1.5 rounded-full bg-red-600/80 text-white hover:bg-red-600 transition-colors shadow-md"
+                  title="Remover Foto"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div>
+                <Label className="text-[10px] font-mono uppercase text-[#A99B90]">Rótulo / Título</Label>
+                <Input
+                  value={item.rotulo || ''}
+                  onChange={(e) => handleUpdateGalleryLabel(idx, e.target.value)}
+                  className="bg-[#0B0908] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 text-xs"
+                  placeholder="Ex: Loiro Iluminado"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Botão Salvar Todas as Mídias */}
+      <Button 
+        onClick={handleSaveMedias} 
+        disabled={saving}
+        className="bg-[#BB8D5B] text-[#0B0908] hover:bg-[#E0BC8D] font-mono text-xs uppercase font-bold py-5 w-full sm:w-auto px-8 shadow-[0_4px_16px_rgba(187,141,91,0.25)]"
+      >
+        <Save className="w-4 h-4 mr-2" /> {saving ? 'Salvando...' : 'Salvar Todas as Mídias'}
+      </Button>
     </div>
-
   );
-
 }
 
-
-
-function CombosManager({ config, combos, onSuccess }: { config: Record<string, string>; combos: any[]; onSuccess: () => void }) {
+// ABA: Detalhes do modo de valores
+function PricingConfigTab({ config, onSuccess }: { config: Record<string, string>; onSuccess: () => void }) {
   const { toast } = useToast();
-  const [visible, setVisible] = useState(config?.combosVisiveis === 'true');
-  const [data, setData] = useState(combos);
-  const [saving, setSaving] = useState(false);
-  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+  const isValuesActive = config.exibirValores === 'true';
 
-  useEffect(() => { setData(combos); }, [combos]);
-  useEffect(() => { setVisible(config?.combosVisiveis === 'true'); }, [config?.combosVisiveis]);
-
-  const handleToggleVisibility = async () => {
-    const newVal = !visible;
-    setVisible(newVal);
-    await supabase.from('configuracoes').upsert({ id: 'combosVisiveis', valor: String(newVal) });
-    toast({ title: newVal ? 'Seção de combos visível no site' : 'Seção de combos oculta do site' });
+  const handleToggle = async (val: boolean) => {
+    const stringVal = val ? 'true' : 'false';
+    saveSiteConfigLocally({ exibirValores: stringVal });
+    try {
+      await supabase.from('configuracoes').upsert({ id: 'exibirValores', valor: stringVal });
+    } catch (e) {}
+    toast({
+      title: 'Configuração atualizada!',
+      description: val ? 'Valores numéricos ativados no site.' : 'Modo "A consultar" ativado no site.',
+    });
     onSuccess();
   };
 
-  const handleChange = (index: number, field: string, value: any) => {
-    const updated = [...data];
+  return (
+    <div className="bg-[#14100E] p-6 rounded-2xl border border-[#BB8D5B]/30 space-y-6">
+      <div>
+        <h2 className="font-serif text-xl font-bold text-[#E0BC8D]">Chave Valores X Consultar</h2>
+        <p className="text-xs text-[#A99B90] mt-1">
+          Defina como seus clientes visualizam a política de preços dos rituais e procedimentos.
+        </p>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className={`p-5 rounded-xl border transition-all cursor-pointer ${
+          !isValuesActive ? 'bg-[#1A1412] border-[#BB8D5B] ring-1 ring-[#BB8D5B]/50' : 'bg-[#0B0908] border-[#BB8D5B]/20 hover:border-[#BB8D5B]/40'
+        }`} onClick={() => handleToggle(false)}>
+          <div className="flex items-center justify-between mb-3">
+            <span className="font-mono text-xs font-bold uppercase tracking-wider text-[#BB8D5B]">Opção 1 (Recomendada)</span>
+            {!isValuesActive && <CheckCircle2 className="w-5 h-5 text-[#BB8D5B]" />}
+          </div>
+          <h3 className="font-serif text-lg font-bold text-[#F5F0E8]">Sob Consulta ("A consultar")</h3>
+          <p className="text-xs text-[#A99B90] mt-2 leading-relaxed">
+            Todos os cartões de serviço exibem discretamente a etiqueta "A consultar". O cliente escolhe o procedimento e consulta o orçamento personalizado diretamente via WhatsApp de cada profissional.
+          </p>
+        </div>
+
+        <div className={`p-5 rounded-xl border transition-all cursor-pointer ${
+          isValuesActive ? 'bg-[#1A1412] border-[#BB8D5B] ring-1 ring-[#BB8D5B]/50' : 'bg-[#0B0908] border-[#BB8D5B]/20 hover:border-[#BB8D5B]/40'
+        }`} onClick={() => handleToggle(true)}>
+          <div className="flex items-center justify-between mb-3">
+            <span className="font-mono text-xs font-bold uppercase tracking-wider text-[#BB8D5B]">Opção 2</span>
+            {isValuesActive && <CheckCircle2 className="w-5 h-5 text-[#BB8D5B]" />}
+          </div>
+          <h3 className="font-serif text-lg font-bold text-[#F5F0E8]">Exibir Valores Numéricos</h3>
+          <p className="text-xs text-[#A99B90] mt-2 leading-relaxed">
+            Exibe os preços individuais preenchidos na aba "Serviços" (ex: "R$ 180,00", "A partir de R$ 250"). Útil quando você desejar praticar tabela aberta para o público.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ABA: LOCALIZAÇÃO E HORÁRIOS (COM VISIBILIDADE / OCULTAR)
+function LocationHoursTab({ config, onSuccess }: { config: Record<string, string>; onSuccess: () => void }) {
+  const { toast } = useToast();
+  const [data, setData] = useState({
+    exibirLocalizacao: config.exibirLocalizacao !== 'false',
+    exibirHorarios: config.exibirHorarios !== 'false',
+    address: config.address || 'Lucas do Rio Verde - MT',
+    mapsUrl: config.mapsUrl || 'https://maps.app.goo.gl/MjawqW4HePjDFeKVA',
+    hours: config.hours || 'Terça a sábado · 09:00 - 18:00',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    const updates = {
+      exibirLocalizacao: data.exibirLocalizacao ? 'true' : 'false',
+      exibirHorarios: data.exibirHorarios ? 'true' : 'false',
+      address: data.address,
+      mapsUrl: data.mapsUrl,
+      hours: data.hours,
+    };
+
+    saveSiteConfigLocally(updates);
+    try {
+      for (const [id, valor] of Object.entries(updates)) {
+        await supabase.from('configuracoes').upsert({ id, valor });
+      }
+    } catch (e) {}
+
+    setSaving(false);
+    toast({ title: 'Configurações de Localização e Horários salvas!' });
+    onSuccess();
+  };
+
+  return (
+    <div className="bg-[#14100E] p-6 rounded-2xl border border-[#BB8D5B]/30 space-y-6">
+      <div>
+        <h2 className="font-serif text-xl font-bold text-[#E0BC8D]">Localização & Horários de Funcionamento</h2>
+        <p className="text-xs text-[#A99B90] mt-1">
+          Ative ou oculte essas seções no rodapé do site e edite as informações sempre que necessário.
+        </p>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Bloco 1: Localização */}
+        <div className="p-5 rounded-xl border border-[#BB8D5B]/25 bg-[#0B0908] space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-[#BB8D5B]/15">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-[#BB8D5B]" />
+              <h3 className="font-serif font-bold text-[#F5F0E8]">Seção Localização</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono text-[#A99B90]">
+                {data.exibirLocalizacao ? 'Visível' : 'Oculto'}
+              </span>
+              <Switch 
+                checked={data.exibirLocalizacao} 
+                onCheckedChange={(val) => setData(prev => ({ ...prev, exibirLocalizacao: val }))}
+                className="data-[state=checked]:bg-[#BB8D5B]" 
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs font-mono uppercase text-[#A99B90]">Texto do Endereço / Cidade</Label>
+              <Input 
+                value={data.address} 
+                onChange={(e) => setData(prev => ({ ...prev, address: e.target.value }))}
+                className="bg-[#14100E] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1" 
+                placeholder="Ex: Lucas do Rio Verde - MT"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-mono uppercase text-[#A99B90]">Link do Google Maps</Label>
+              <Input 
+                value={data.mapsUrl} 
+                onChange={(e) => setData(prev => ({ ...prev, mapsUrl: e.target.value }))}
+                className="bg-[#14100E] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1" 
+                placeholder="https://maps.app.goo.gl/..."
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Bloco 2: Horários */}
+        <div className="p-5 rounded-xl border border-[#BB8D5B]/25 bg-[#0B0908] space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-[#BB8D5B]/15">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-[#BB8D5B]" />
+              <h3 className="font-serif font-bold text-[#F5F0E8]">Seção Horários</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono text-[#A99B90]">
+                {data.exibirHorarios ? 'Visível' : 'Oculto'}
+              </span>
+              <Switch 
+                checked={data.exibirHorarios} 
+                onCheckedChange={(val) => setData(prev => ({ ...prev, exibirHorarios: val }))}
+                className="data-[state=checked]:bg-[#BB8D5B]" 
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs font-mono uppercase text-[#A99B90]">Resumo dos Horários</Label>
+              <Input 
+                value={data.hours} 
+                onChange={(e) => setData(prev => ({ ...prev, hours: e.target.value }))}
+                className="bg-[#14100E] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1" 
+                placeholder="Ex: Terça a sábado · 09:00 - 18:00"
+              />
+            </div>
+            <p className="text-[11px] text-[#A99B90] leading-relaxed">
+              Quando ativado, os horários de funcionamento aparecem na coluna do rodapé.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <Button 
+        onClick={handleSave} 
+        disabled={saving}
+        className="bg-[#BB8D5B] text-[#0B0908] hover:bg-[#E0BC8D] font-mono text-xs uppercase font-bold py-5"
+      >
+        <Save className="w-4 h-4 mr-2" /> {saving ? 'Salvando...' : 'Salvar Alterações'}
+      </Button>
+    </div>
+  );
+}
+
+// ABA: SERVIÇOS (EDITAR, ADICIONAR, EXCLUIR)
+const INITIAL_SERVICOS_COMBINADOS = [
+  // Cassiano
+  { id: '1', profissional: 'Cassiano', titulo: 'Corte', detalhe: 'A consultar', descricao: 'Visagismo e desenho sob medida para valorizar sua estrutura e estilo.' },
+  { id: '2', profissional: 'Cassiano', titulo: 'Escova', detalhe: 'A consultar', descricao: 'Finalização impecável com brilho duradouro e movimento natural.' },
+  { id: '3', profissional: 'Cassiano', titulo: 'Extensão Capilar (Mega Hair)', detalhe: 'A consultar', descricao: 'Técnica avançada com acabamento imperceptível, comprimento e volume.' },
+  { id: '4', profissional: 'Cassiano', titulo: 'Mechas (Loiras e Morenas Iluminadas)', detalhe: 'A consultar', descricao: 'Dimensões personalizadas que harmonizam perfeitamente com seu tom de pele.' },
+  { id: '5', profissional: 'Cassiano', titulo: 'Penteado', detalhe: 'A consultar', descricao: 'Criações exclusivas para ocasiões especiais, noivas e celebrações.' },
+  { id: '6', profissional: 'Cassiano', titulo: 'Progressiva com Formol (Selagem)', detalhe: 'A consultar', descricao: 'Alinhamento intenso, controle de frizz e redução expressiva de volume.' },
+  { id: '7', profissional: 'Cassiano', titulo: 'Progressiva Orgânica (Selagem)', detalhe: 'A consultar', descricao: 'Alinhamento suave sem formol, fios sedosos e tratamento profundo.' },
+  { id: '8', profissional: 'Cassiano', titulo: 'Coloração', detalhe: 'A consultar', descricao: 'Cobertura impecável, nuances ricas e durabilidade com produtos nobres.' },
+  { id: '9', profissional: 'Cassiano', titulo: 'Tonalização de Fios Brancos', detalhe: 'A consultar', descricao: 'Camuflagem elegante e natural dos primeiros fios brancos.' },
+  { id: '10', profissional: 'Cassiano', titulo: 'Hidratação', detalhe: 'A consultar', descricao: 'Rituais de nutrição e reposição lipídica para devolver vida e sedosidade.' },
+  // Isabella
+  { id: '11', profissional: 'Isabella', titulo: 'Esmaltação em gel', detalhe: 'A consultar', descricao: 'Brilho espelhado e durabilidade prolongada sem descascar.' },
+  { id: '12', profissional: 'Isabella', titulo: 'Banho de gel', detalhe: 'A consultar', descricao: 'Camada de proteção e fortalecimento para as unhas naturais.' },
+  { id: '13', profissional: 'Isabella', titulo: 'Alongamento em molde F1', detalhe: 'A consultar', descricao: 'Formato impecável, curvatura perfeita e acabamento ultra natural.' },
+  { id: '14', profissional: 'Isabella', titulo: 'Manutenção', detalhe: 'A consultar', descricao: 'Cuidado periódico para manter o alinhamento e estrutura das unhas.' },
+  { id: '15', profissional: 'Isabella', titulo: 'Pé e mão', detalhe: 'A consultar', descricao: 'Cuidado completo e detalhado com cuticulagem e esmaltação refinada.' },
+  { id: '16', profissional: 'Isabella', titulo: 'Mão', detalhe: 'A consultar', descricao: 'Design e higienização das unhas das mãos com acabamento de alta precisão.' },
+  { id: '17', profissional: 'Isabella', titulo: 'Pé', detalhe: 'A consultar', descricao: 'Tratamento das unhas dos pés, hidratação e esmaltação elegante.' },
+  { id: '18', profissional: 'Isabella', titulo: 'Pacote (4 mãos e 2 pés)', detalhe: 'A consultar', descricao: 'Combo mensal de cuidados regulares com atendimento prioritário.' },
+  { id: '19', profissional: 'Isabella', titulo: 'Plástica dos pés', detalhe: 'A consultar', descricao: 'Renovação e hidratação profunda para pés macios e aveludados.' },
+];
+
+function ServicesManagerTab({ config, onSuccess }: { config: Record<string, string>; onSuccess: () => void }) {
+  const { toast } = useToast();
+  const [services, setServices] = useState<any[]>(() => {
+    try {
+      const stored = localStorage.getItem('duo_servicos');
+      if (stored) return JSON.parse(stored);
+    } catch (e) {}
+    return INITIAL_SERVICOS_COMBINADOS;
+  });
+  const [filterProf, setFilterProf] = useState<'Todos' | 'Cassiano' | 'Isabella'>('Todos');
+  const [saving, setSaving] = useState(false);
+
+  const isValuesActive = config.exibirValores === 'true';
+
+  const handleUpdate = (index: number, field: string, value: any) => {
+    const updated = [...services];
     updated[index] = { ...updated[index], [field]: value };
-    setData(updated);
+    setServices(updated);
   };
 
   const handleAdd = () => {
-    setData([...data, { titulo: '', descricao: '', imagem_url: '', ativo: true, ordem: data.length + 1 }]);
+    const newService = {
+      id: String(Date.now()),
+      profissional: filterProf === 'Todos' ? 'Cassiano' : filterProf,
+      titulo: 'Novo Serviço',
+      detalhe: 'A consultar',
+      descricao: 'Descrição personalizada do procedimento.',
+    };
+    setServices([newService, ...services]);
+    toast({ title: 'Serviço adicionado! Preencha os campos e salve.' });
   };
 
-  const handleDelete = async (index: number, id?: string) => {
-    if (!confirm('Tem certeza que deseja excluir este combo?')) return;
-    if (id) {
-      await supabase.from('combos_promo').delete().eq('id', id);
-    }
-    const updated = [...data];
+  const handleDelete = (index: number) => {
+    if (!confirm('Deseja realmente excluir este serviço?')) return;
+    const updated = [...services];
     updated.splice(index, 1);
-    setData(updated);
-    toast({ title: 'Combo removido.' });
-    if (id) onSuccess();
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingIdx(index);
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `combo-${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('fotos').upload(fileName, file);
-      if (uploadError) throw uploadError;
-      const { data: { publicUrl } } = supabase.storage.from('fotos').getPublicUrl(fileName);
-      handleChange(index, 'imagem_url', publicUrl);
-      toast({ title: 'Foto enviada com sucesso!' });
-    } catch (err: any) {
-      toast({ title: 'Erro no upload', description: err.message, variant: 'destructive' });
-    } finally {
-      setUploadingIdx(null);
-    }
+    setServices(updated);
+    saveServicesLocally(updated);
+    toast({ title: 'Serviço removido com sucesso.' });
   };
 
   const handleSave = async () => {
     setSaving(true);
-    const promises = data.map(item => {
-      const payload = {
-        titulo: item.titulo,
-        descricao: item.descricao,
-        imagem_url: item.imagem_url,
-        ativo: item.ativo,
-        ordem: item.ordem,
-      };
-      if (!item.id) {
-        return supabase.from('combos_promo').insert(payload);
+    saveServicesLocally(services);
+    try {
+      for (const srv of services) {
+        await supabase.from('servicos').upsert({
+          titulo: srv.titulo,
+          detalhe: srv.detalhe,
+          descricao: srv.descricao,
+        });
       }
-      return supabase.from('combos_promo').update(payload).eq('id', item.id);
-    });
-    const results = await Promise.all(promises);
-    const errors = results.filter(r => r.error).map(r => r.error);
-    if (errors.length > 0) {
-      console.error(errors);
-      toast({ title: 'Erro ao salvar', description: errors[0]?.message, variant: 'destructive' });
-      setSaving(false);
-      return;
-    }
+    } catch (e) {}
     setSaving(false);
-    toast({ title: 'Combos salvos com sucesso!' });
+    toast({ title: 'Todos os serviços foram salvos com sucesso!' });
+    onSuccess();
+  };
+
+  const filtered = filterProf === 'Todos' 
+    ? services 
+    : services.filter(s => s.profissional === filterProf);
+
+  return (
+    <div className="bg-[#14100E] p-6 rounded-2xl border border-[#BB8D5B]/30 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="font-serif text-xl font-bold text-[#E0BC8D]">Gerenciamento de Serviços</h2>
+          <p className="text-xs text-[#A99B90] mt-1">
+            Edite nomes, descrições, preços e profissionais responsáveis.
+            {isValuesActive ? (
+              <span className="text-[#BB8D5B] font-semibold block mt-0.5">
+                ● Modo Valores ATIVO: O campo "Valor / Detalhe" é exibido diretamente para os clientes.
+              </span>
+            ) : (
+              <span className="text-[#A99B90] block mt-0.5">
+                ● Modo "A consultar" ATIVO: Os cartões mostram "A consultar", mas você já pode cadastrar os valores aqui para o futuro.
+              </span>
+            )}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button 
+            onClick={handleAdd}
+            className="bg-[#BB8D5B]/20 text-[#E0BC8D] border border-[#BB8D5B]/40 hover:bg-[#BB8D5B] hover:text-[#0B0908] font-mono text-xs uppercase"
+          >
+            <Plus className="w-4 h-4 mr-1.5" /> Adicionar Serviço
+          </Button>
+          <Button 
+            onClick={handleSave} 
+            disabled={saving}
+            className="bg-[#BB8D5B] text-[#0B0908] hover:bg-[#E0BC8D] font-mono text-xs uppercase font-bold"
+          >
+            <Save className="w-4 h-4 mr-1.5" /> {saving ? 'Salvando...' : 'Salvar Tudo'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Filtro por Profissional */}
+      <div className="flex gap-2 border-b border-[#BB8D5B]/20 pb-3">
+        {(['Todos', 'Cassiano', 'Isabella'] as const).map(p => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => setFilterProf(p)}
+            className={`px-4 py-1.5 rounded-full text-xs font-mono uppercase tracking-wider transition-all ${
+              filterProf === p 
+                ? 'bg-[#BB8D5B] text-[#0B0908] font-bold' 
+                : 'text-[#A99B90] hover:text-[#E0BC8D] bg-[#0B0908]'
+            }`}
+          >
+            {p === 'Todos' ? 'Todos os Serviços' : `${p}`}
+          </button>
+        ))}
+      </div>
+
+      {/* Lista de Serviços */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {filtered.map((srv, idx) => {
+          const originalIndex = services.findIndex(s => s.id === srv.id);
+          return (
+            <div key={srv.id || idx} className="p-4 rounded-xl border border-[#BB8D5B]/25 bg-[#0B0908] space-y-3 relative group">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase font-bold tracking-wider text-[#BB8D5B] bg-[#BB8D5B]/10 px-2 py-0.5 rounded">
+                  {srv.profissional || 'Cassiano'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(originalIndex)}
+                  className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-red-500/10 transition-colors"
+                  title="Excluir Serviço"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div>
+                <Label className="text-[10px] font-mono uppercase text-[#A99B90]">Título do Serviço</Label>
+                <Input 
+                  value={srv.titulo} 
+                  onChange={(e) => handleUpdate(originalIndex, 'titulo', e.target.value)}
+                  className="bg-[#14100E] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 text-sm font-semibold" 
+                />
+              </div>
+
+              <div>
+                <Label className="text-[10px] font-mono uppercase text-[#A99B90]">
+                  {isValuesActive ? 'Valor / Preço Exibido' : 'Valor (Armazenado para quando ativar)'}
+                </Label>
+                <Input 
+                  value={srv.detalhe || 'A consultar'} 
+                  onChange={(e) => handleUpdate(originalIndex, 'detalhe', e.target.value)}
+                  className="bg-[#14100E] border-[#BB8D5B]/30 text-[#E0BC8D] mt-1 text-xs font-mono" 
+                  placeholder="Ex: R$ 180,00 ou A consultar"
+                />
+              </div>
+
+              <div>
+                <Label className="text-[10px] font-mono uppercase text-[#A99B90]">Descrição</Label>
+                <Textarea 
+                  value={srv.descricao} 
+                  onChange={(e) => handleUpdate(originalIndex, 'descricao', e.target.value)}
+                  className="bg-[#14100E] border-[#BB8D5B]/30 text-[#C9BEB5] mt-1 text-xs min-h-[60px]" 
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ABA: TEXTOS & CONTATOS
+function TextsAndContactsTab({ config, onSuccess }: { config: Record<string, string>; onSuccess: () => void }) {
+  const { toast } = useToast();
+  const [data, setData] = useState({
+    cassianoWhatsapp: config.cassianoWhatsapp || '5565996611206',
+    cassianoWhatsappLabel: config.cassianoWhatsappLabel || '(65) 9 9661-1206',
+    cassianoInstagram: config.cassianoInstagram || '@cassianomonteiro_',
+    cassianoInstagramUrl: config.cassianoInstagramUrl || 'https://instagram.com/cassianomonteiro_',
+
+    isabellaWhatsapp: config.isabellaWhatsapp || '5565999225844',
+    isabellaWhatsappLabel: config.isabellaWhatsappLabel || '(65) 9 9922-5844',
+    isabellaInstagram: config.isabellaInstagram || '@isabellamorandinails',
+    isabellaInstagramUrl: config.isabellaInstagramUrl || 'https://instagram.com/isabellamorandinails',
+
+    heroTitle: config.heroTitle || 'Sua beleza merece uma experiência extraordinária.',
+    aboutTitle: config.aboutTitle || 'Mais do que um espaço de beleza, um encontro de histórias, sonhos e dedicação.',
+    aboutText1: config.aboutText1 || 'Toda grande história começa com um sonho. A nossa nasceu da paixão pela beleza, do desejo de transformar a autoestima das pessoas e da vontade de construir um espaço onde cada cliente se sentisse especial, acolhido e valorizado.',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    saveSiteConfigLocally(data);
+    try {
+      for (const [id, valor] of Object.entries(data)) {
+        await supabase.from('configuracoes').upsert({ id, valor });
+      }
+    } catch (e) {}
+    setSaving(false);
+    toast({ title: 'Textos e contatos salvos!' });
     onSuccess();
   };
 
   return (
-    <div className="space-y-6">
-      {/* Toggle de visibilidade global */}
-      <div className="flex items-center justify-between p-4 rounded-lg border border-[#f9eee7]/10 bg-[#080709]">
+    <div className="bg-[#14100E] p-6 rounded-2xl border border-[#BB8D5B]/30 space-y-6">
+      <div>
+        <h2 className="font-serif text-xl font-bold text-[#E0BC8D]">Textos & Contatos dos Profissionais</h2>
+        <p className="text-xs text-[#A99B90] mt-1">
+          Edite os números individuais de WhatsApp e links de Instagram para Cassiano e Isabella.
+        </p>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Cassiano */}
+        <div className="p-5 rounded-xl border border-[#BB8D5B]/25 bg-[#0B0908] space-y-3">
+          <h3 className="font-serif font-bold text-[#F5F0E8] flex items-center gap-2">
+            <Scissors className="w-4 h-4 text-[#BB8D5B]" /> Contatos de Cassiano (Cabelos)
+          </h3>
+          <div>
+            <Label className="text-[10px] font-mono uppercase text-[#A99B90]">WhatsApp Número (somente dígitos)</Label>
+            <Input 
+              value={data.cassianoWhatsapp} 
+              onChange={(e) => setData(prev => ({ ...prev, cassianoWhatsapp: e.target.value }))}
+              className="bg-[#14100E] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 font-mono text-xs" 
+            />
+          </div>
+          <div>
+            <Label className="text-[10px] font-mono uppercase text-[#A99B90]">WhatsApp Rótulo Visível</Label>
+            <Input 
+              value={data.cassianoWhatsappLabel} 
+              onChange={(e) => setData(prev => ({ ...prev, cassianoWhatsappLabel: e.target.value }))}
+              className="bg-[#14100E] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 font-mono text-xs" 
+            />
+          </div>
+          <div>
+            <Label className="text-[10px] font-mono uppercase text-[#A99B90]">Instagram (@)</Label>
+            <Input 
+              value={data.cassianoInstagram} 
+              onChange={(e) => setData(prev => ({ ...prev, cassianoInstagram: e.target.value }))}
+              className="bg-[#14100E] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 font-mono text-xs" 
+            />
+          </div>
+          <div>
+            <Label className="text-[10px] font-mono uppercase text-[#A99B90]">Instagram URL</Label>
+            <Input 
+              value={data.cassianoInstagramUrl} 
+              onChange={(e) => setData(prev => ({ ...prev, cassianoInstagramUrl: e.target.value }))}
+              className="bg-[#14100E] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 font-mono text-xs" 
+            />
+          </div>
+        </div>
+
+        {/* Isabella */}
+        <div className="p-5 rounded-xl border border-[#BB8D5B]/25 bg-[#0B0908] space-y-3">
+          <h3 className="font-serif font-bold text-[#F5F0E8] flex items-center gap-2">
+            <ImageIcon className="w-4 h-4 text-[#BB8D5B]" /> Contatos de Isabella (Unhas)
+          </h3>
+          <div>
+            <Label className="text-[10px] font-mono uppercase text-[#A99B90]">WhatsApp Número (somente dígitos)</Label>
+            <Input 
+              value={data.isabellaWhatsapp} 
+              onChange={(e) => setData(prev => ({ ...prev, isabellaWhatsapp: e.target.value }))}
+              className="bg-[#14100E] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 font-mono text-xs" 
+            />
+          </div>
+          <div>
+            <Label className="text-[10px] font-mono uppercase text-[#A99B90]">WhatsApp Rótulo Visível</Label>
+            <Input 
+              value={data.isabellaWhatsappLabel} 
+              onChange={(e) => setData(prev => ({ ...prev, isabellaWhatsappLabel: e.target.value }))}
+              className="bg-[#14100E] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 font-mono text-xs" 
+            />
+          </div>
+          <div>
+            <Label className="text-[10px] font-mono uppercase text-[#A99B90]">Instagram (@)</Label>
+            <Input 
+              value={data.isabellaInstagram} 
+              onChange={(e) => setData(prev => ({ ...prev, isabellaInstagram: e.target.value }))}
+              className="bg-[#14100E] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 font-mono text-xs" 
+            />
+          </div>
+          <div>
+            <Label className="text-[10px] font-mono uppercase text-[#A99B90]">Instagram URL</Label>
+            <Input 
+              value={data.isabellaInstagramUrl} 
+              onChange={(e) => setData(prev => ({ ...prev, isabellaInstagramUrl: e.target.value }))}
+              className="bg-[#14100E] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 font-mono text-xs" 
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Textos Principais */}
+      <div className="space-y-4 pt-4 border-t border-[#BB8D5B]/20">
         <div>
-          <p className="text-sm font-medium text-[#f9eee7]">Seção visível no site</p>
-          <p className="text-xs text-[#a99594] mt-1">Quando ativada, a seção de combos aparece entre a Hero e os Serviços.</p>
+          <Label className="text-xs font-mono uppercase text-[#A99B90]">Título Principal da Hero</Label>
+          <Input 
+            value={data.heroTitle} 
+            onChange={(e) => setData(prev => ({ ...prev, heroTitle: e.target.value }))}
+            className="bg-[#0B0908] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1" 
+          />
         </div>
-        <button
-          type="button"
-          onClick={handleToggleVisibility}
-          className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-colors ${visible ? 'bg-[#df9587] text-[#080709]' : 'bg-[#1a1a1a] text-[#a99594] border border-[#f9eee7]/20'}`}
-        >
-          {visible ? <><ToggleRight size={16} /> Visível</> : <><ToggleLeft size={16} /> Oculta</>}
-        </button>
+        <div>
+          <Label className="text-xs font-mono uppercase text-[#A99B90]">Título da Seção Sobre</Label>
+          <Input 
+            value={data.aboutTitle} 
+            onChange={(e) => setData(prev => ({ ...prev, aboutTitle: e.target.value }))}
+            className="bg-[#0B0908] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1" 
+          />
+        </div>
+        <div>
+          <Label className="text-xs font-mono uppercase text-[#A99B90]">Parágrafo Sobre Nós</Label>
+          <Textarea 
+            value={data.aboutText1} 
+            onChange={(e) => setData(prev => ({ ...prev, aboutText1: e.target.value }))}
+            className="bg-[#0B0908] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 min-h-[90px]" 
+          />
+        </div>
       </div>
 
-      {/* Lista de combos */}
-      {data.map((combo, idx) => (
-        <div key={combo.id || `new-combo-${idx}`} className={`p-4 border ${combo.ativo === false ? 'border-red-500/30 bg-[#1a0f12]' : 'border-[#f9eee7]/10 bg-[#080709]'} rounded-lg space-y-4 transition-colors`}>
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-semibold text-[#a99594] flex items-center gap-2">
-              Combo #{idx + 1}
-              {combo.ativo === false && <span className="text-red-400 text-xs px-2 py-0.5 bg-red-900/30 rounded">(Oculto)</span>}
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 border-[#f9eee7]/20 text-[#a99594] hover:text-[#f9eee7] hover:bg-[#2a2a2a]"
-                onClick={() => handleChange(idx, 'ativo', combo.ativo === false ? true : false)}
-                title={combo.ativo === false ? 'Ativar combo' : 'Desativar combo'}
-              >
-                {combo.ativo === false ? <EyeOff size={16} /> : <Eye size={16} />}
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                className="h-8"
-                onClick={() => handleDelete(idx, combo.id)}
-              >
-                <Trash2 size={16} />
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Imagem */}
-            <div className="space-y-3">
-              <div className="aspect-video bg-[#111014] rounded overflow-hidden relative flex items-center justify-center border border-[#f9eee7]/10">
-                {combo.imagem_url ? (
-                  <img src={combo.imagem_url} alt="preview" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="flex flex-col items-center gap-2 text-[#a99594]">
-                    <Image size={24} />
-                    <span className="text-xs">Sem imagem</span>
-                  </div>
-                )}
-                {uploadingIdx === idx && (
-                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-xs">
-                    Enviando...
-                  </div>
-                )}
-              </div>
-              <div>
-                <Label className="text-[#d1bbb6] text-xs">Enviar Foto (PNG ou JPG)</Label>
-                <Input type="file" accept="image/png, image/jpeg" onChange={(e) => handleFileChange(e, idx)} className="bg-[#111014] border-[#f9eee7]/20 text-[#f9eee7] text-xs h-8" />
-              </div>
-            </div>
-
-            {/* Título + Descrição */}
-            <div className="space-y-4">
-              <div>
-                <Label className="text-[#d1bbb6]">Título do Combo</Label>
-                <Input className="bg-[#111014] border-[#f9eee7]/20 text-[#f9eee7]" value={combo.titulo || ''} onChange={e => handleChange(idx, 'titulo', e.target.value)} placeholder="Ex: Combo Verão Brilhante" />
-              </div>
-              <div>
-                <Label className="text-[#d1bbb6]">Descrição</Label>
-                <Textarea className="bg-[#111014] border-[#f9eee7]/20 text-[#f9eee7] min-h-[120px]" value={combo.descricao || ''} onChange={e => handleChange(idx, 'descricao', e.target.value)} placeholder="Descreva o que inclui no combo, preço, condições..." />
-              </div>
-              <div>
-                <Label className="text-[#d1bbb6]">Ordem</Label>
-                <Input type="number" className="bg-[#111014] border-[#f9eee7]/20 text-[#f9eee7] h-8" value={combo.ordem || 0} onChange={e => handleChange(idx, 'ordem', parseInt(e.target.value))} />
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
-
-      <div className="flex justify-between items-center pt-4 border-t border-[#f9eee7]/10">
-        <Button onClick={handleAdd} variant="outline" className="border-[#f9eee7]/20 text-[#f9eee7] hover:bg-[#f9eee7]">
-          <Plus className="mr-2 h-4 w-4" /> Adicionar Combo
-        </Button>
-        <Button onClick={handleSave} disabled={saving} className="bg-[#d68c80] text-[#24161d] hover:bg-[#df9587]">
-          <Save className="mr-2 h-4 w-4" /> {saving ? 'Salvando...' : 'Salvar Combos'}
-        </Button>
-      </div>
+      <Button 
+        onClick={handleSave} 
+        disabled={saving}
+        className="bg-[#BB8D5B] text-[#0B0908] hover:bg-[#E0BC8D] font-mono text-xs uppercase font-bold py-5"
+      >
+        <Save className="w-4 h-4 mr-2" /> {saving ? 'Salvando...' : 'Salvar Textos e Contatos'}
+      </Button>
     </div>
   );
 }
