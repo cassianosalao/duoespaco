@@ -80,7 +80,14 @@ export function saveSiteConfigLocally(updates: Record<string, string>) {
   try {
     const stored = localStorage.getItem('duo_configuracoes');
     const curr = stored ? JSON.parse(stored) : {};
-    const merged = { ...curr, ...updates };
+    const safeUpdates: Record<string, string> = {};
+    for (const [k, v] of Object.entries(updates)) {
+      if (typeof v === 'string' && v.startsWith('data:') && v.length > 50000) {
+        continue;
+      }
+      safeUpdates[k] = v;
+    }
+    const merged = { ...curr, ...safeUpdates };
     localStorage.setItem('duo_configuracoes', JSON.stringify(merged));
   } catch (e) {
     console.error('Erro ao salvar no localStorage', e);

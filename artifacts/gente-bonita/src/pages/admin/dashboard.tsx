@@ -23,9 +23,46 @@ import {
   DEFAULT_CONFIG 
 } from '@/hooks/use-site-data';
 
-// Função de upload que aceita qualquer foto ou vídeo direto da galeria
+// Função de upload que envia direto para o Supabase Storage (com URL pública persistente)
 async function uploadMediaFile(file: File): Promise<string> {
-  // 1. Tenta endpoint local de alta velocidade /api/upload
+  const cleanName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const contentType = file.type || (file.name.endsWith('.mp4') ? 'video/mp4' : 'application/octet-stream');
+
+  // 1. Tenta subir no bucket 'fotos' (que já está configurado como público no Supabase)
+  try {
+    const { data, error } = await supabase.storage.from('fotos').upload(cleanName, file, {
+      contentType,
+      upsert: true,
+    });
+    if (!error && data) {
+      const { data: urlData } = supabase.storage.from('fotos').getPublicUrl(cleanName);
+      if (urlData?.publicUrl) return urlData.publicUrl;
+    }
+    if (error) {
+      console.warn('Tentativa no bucket fotos falhou:', error);
+    }
+  } catch (e) {
+    console.warn('Erro ao enviar para fotos:', e);
+  }
+
+  // 2. Se falhar, tenta no bucket 'videos'
+  try {
+    const { data, error } = await supabase.storage.from('videos').upload(cleanName, file, {
+      contentType,
+      upsert: true,
+    });
+    if (!error && data) {
+      const { data: urlData } = supabase.storage.from('videos').getPublicUrl(cleanName);
+      if (urlData?.publicUrl) return urlData.publicUrl;
+    }
+    if (error) {
+      console.warn('Tentativa no bucket videos falhou:', error);
+    }
+  } catch (e) {
+    console.warn('Erro ao enviar para videos:', e);
+  }
+
+  // 3. Tenta endpoint local se estiver em dev
   try {
     const res = await fetch('/api/upload', {
       method: 'POST',
@@ -39,30 +76,9 @@ async function uploadMediaFile(file: File): Promise<string> {
       const data = await res.json();
       if (data.url) return data.url;
     }
-  } catch (e) {
-    console.warn('Upload local falhou, tentando Supabase...', e);
-  }
+  } catch (e) {}
 
-  // 2. Tenta Supabase Storage
-  try {
-    const filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    const bucket = file.type.startsWith('video/') ? 'videos' : 'fotos';
-    const { data, error } = await supabase.storage.from(bucket).upload(filename, file);
-    if (!error && data) {
-      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(filename);
-      if (urlData?.publicUrl) return urlData.publicUrl;
-    }
-  } catch (e) {
-    console.warn('Supabase storage falhou, usando data url em memória...', e);
-  }
-
-  // 3. Fallback Data URL
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+  throw new Error('Falha no upload para o Supabase Storage. Verifique as permissões de storage.');
 }
 
 export default function AdminDashboard() {
