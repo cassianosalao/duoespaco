@@ -310,14 +310,18 @@
 }
 
 /* Ocultação forçada de qualquer badge/watermark da Netlify */
+#nl-hud-frame,
+#nl-badge-frame,
+iframe[id*="nl-"],
+iframe[src*="netlify"],
 netlify-badge,
 netlify-drawer,
 netlify-feedback,
 [class*="netlify"],
 [id*="netlify"],
+[id*="nl-"],
 [data-netlify-badge],
 a[href*="netlify.com"],
-iframe[src*="netlify"],
 div:has(> a[href*="netlify.com"]),
 div:has(> [class*="netlify"]),
 div:has(> netlify-badge),
