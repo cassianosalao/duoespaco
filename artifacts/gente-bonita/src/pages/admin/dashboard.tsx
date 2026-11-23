@@ -840,17 +840,17 @@ function MediaManagerTab({
             </div>
           </div>
 
-          {/* Foto Especialidade Mega Hair */}
+          {/* Foto Sessão Cabelos (Cassiano) */}
           <div className="p-4 rounded-2xl border border-[#BB8D5B]/25 bg-[#0B0908] space-y-3 flex flex-col justify-between">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label className="text-xs font-mono uppercase font-bold text-[#E0BC8D]">Foto Mega Hair</Label>
+                <Label className="text-xs font-mono uppercase font-bold text-[#E0BC8D]">Cabelos (Sessão)</Label>
                 <span className="text-[10px] font-mono text-[#BB8D5B]">Cassiano</span>
               </div>
 
               <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-[#BB8D5B]/30 bg-[#14100E]">
                 {megaHairImage ? (
-                  <img src={megaHairImage} alt="Mega Hair" className="h-full w-full object-cover" />
+                  <img src={megaHairImage} alt="Cabelos por Cassiano" className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-xs text-[#A99B90]">Sem foto</div>
                 )}
@@ -862,7 +862,7 @@ function MediaManagerTab({
                 type="file"
                 ref={megaInputRef}
                 accept="image/*"
-                onChange={(e) => handlePhotoUpload(e, setMegaHairImage, 'megaHairImage', setUploadingMega, 'Foto do Mega Hair')}
+                onChange={(e) => handlePhotoUpload(e, setMegaHairImage, 'megaHairImage', setUploadingMega, 'Foto da Seção de Cabelos (Cassiano)')}
                 className="hidden"
               />
               <Button
