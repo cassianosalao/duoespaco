@@ -449,9 +449,11 @@ function About() {
             <div className="relative w-full max-w-[320px] sm:max-w-[360px] md:max-w-[380px] overflow-hidden rounded-3xl border-2 border-[#BB8D5B]/45 bg-[#0B0908] shadow-[0_25px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(187,141,91,0.2)]">
               <div className="aspect-[9/16] w-full relative bg-[#0B0908]">
                 <video
+                  key={videoSrc}
+                  src={videoSrc}
                   controls
                   playsInline
-                  preload="none"
+                  preload="metadata"
                   poster={posterSrc}
                   className="h-full w-full object-cover rounded-2xl"
                 >

@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { 
   LogOut, Save, Plus, Trash2, Video, DollarSign, 
   MapPin, Clock, Scissors, Image as ImageIcon, FileText, 
-  CheckCircle2, Upload, Film, Loader2, Sparkles
+  CheckCircle2, Upload, Film, Loader2, Sparkles, RefreshCw
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -84,10 +84,35 @@ async function uploadMediaFile(file: File): Promise<string> {
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const { toast } = useToast();
 
   const configQuery = useSiteConfig();
   const servicesQuery = useServices();
   const galleryQuery = useGallery();
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await Promise.all([
+        configQuery.refetch(),
+        servicesQuery.refetch(),
+        galleryQuery.refetch(),
+      ]);
+      toast({
+        title: 'Sincronização com Supabase Concluída!',
+        description: 'Todas as configurações, fotos e vídeos foram atualizados com a nuvem.',
+      });
+    } catch (e) {
+      toast({
+        title: 'Erro ao sincronizar',
+        description: 'Não foi possível conectar ao Supabase.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => {
     const localSession = sessionStorage.getItem('duo_admin_session');
@@ -136,13 +161,25 @@ export default function AdminDashboard() {
             <p className="text-xs text-[#A99B90] mt-0.5">Gerenciamento de serviços, valores, mídias e conteúdos</p>
           </div>
 
-          <Button 
-            variant="outline" 
-            onClick={handleLogout} 
-            className="border-[#BB8D5B]/30 hover:bg-[#14100E] text-[#E0BC8D] font-mono text-xs uppercase"
-          >
-            <LogOut className="mr-2 h-4 w-4 text-[#BB8D5B]" /> Sair para o Site
-          </Button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={syncing}
+              onClick={handleSync}
+              className="border-[#BB8D5B]/50 bg-[#BB8D5B]/15 hover:bg-[#BB8D5B] hover:text-[#0B0908] text-[#E0BC8D] font-mono text-xs uppercase"
+            >
+              <RefreshCw className={`mr-2 h-3.5 w-3.5 text-[#BB8D5B] ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Sincronizando...' : 'Sincronizar Supabase'}
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={handleLogout} 
+              className="border-[#BB8D5B]/30 hover:bg-[#14100E] text-[#E0BC8D] font-mono text-xs uppercase"
+            >
+              <LogOut className="mr-2 h-4 w-4 text-[#BB8D5B]" /> Sair para o Site
+            </Button>
+          </div>
         </header>
 
         {/* Chave Rápida: Valores X Consultar */}
@@ -320,6 +357,22 @@ function MediaManagerTab({
       { url_imagem: '/images/salao-luxury.jpg', rotulo: 'Ambiente & Atelier' },
     ];
   });
+
+  // Sincroniza o estado sempre que os dados chegam da nuvem Supabase
+  useEffect(() => {
+    if (config?.videoUrl) setVideoUrl(config.videoUrl);
+    if (config?.posterImage) setPosterImage(config.posterImage);
+    if (config?.logoImage) setLogoImage(config.logoImage);
+    if (config?.heroImage) setHeroImage(config.heroImage);
+    if (config?.megaHairImage) setMegaHairImage(config.megaHairImage);
+    if (config?.unhasImage) setUnhasImage(config.unhasImage);
+  }, [config]);
+
+  useEffect(() => {
+    if (gallery && gallery.length > 0) {
+      setGalleryItems(gallery);
+    }
+  }, [gallery]);
 
   // Estados de upload em progresso
   const [uploadingVideo, setUploadingVideo] = useState(false);
@@ -548,6 +601,7 @@ function MediaManagerTab({
             <div className="relative w-[150px] aspect-[9/16] overflow-hidden rounded-2xl border-2 border-[#BB8D5B]/40 bg-[#14100E] shadow-xl">
               <video
                 key={videoUrl}
+                src={videoUrl}
                 controls
                 playsInline
                 poster={posterImage}
@@ -901,6 +955,16 @@ function LocationHoursTab({ config, onSuccess }: { config: Record<string, string
   });
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    setData({
+      exibirLocalizacao: config.exibirLocalizacao !== 'false',
+      exibirHorarios: config.exibirHorarios !== 'false',
+      address: config.address || 'Lucas do Rio Verde - MT',
+      mapsUrl: config.mapsUrl || 'https://maps.app.goo.gl/MjawqW4HePjDFeKVA',
+      hours: config.hours || 'Terça a sábado · 09:00 - 18:00',
+    });
+  }, [config]);
+
   const handleSave = async () => {
     setSaving(true);
     const updates = {
@@ -1238,6 +1302,24 @@ function TextsAndContactsTab({ config, onSuccess }: { config: Record<string, str
     aboutText1: config.aboutText1 || 'Toda grande história começa com um sonho. A nossa nasceu da paixão pela beleza, do desejo de transformar a autoestima das pessoas e da vontade de construir um espaço onde cada cliente se sentisse especial, acolhido e valorizado.',
   });
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setData({
+      cassianoWhatsapp: config.cassianoWhatsapp || '5565996611206',
+      cassianoWhatsappLabel: config.cassianoWhatsappLabel || '(65) 9 9661-1206',
+      cassianoInstagram: config.cassianoInstagram || '@cassianomonteiro_',
+      cassianoInstagramUrl: config.cassianoInstagramUrl || 'https://instagram.com/cassianomonteiro_',
+
+      isabellaWhatsapp: config.isabellaWhatsapp || '5565999225844',
+      isabellaWhatsappLabel: config.isabellaWhatsappLabel || '(65) 9 9922-5844',
+      isabellaInstagram: config.isabellaInstagram || '@isabellamorandinails',
+      isabellaInstagramUrl: config.isabellaInstagramUrl || 'https://instagram.com/isabellamorandinails',
+
+      heroTitle: config.heroTitle || 'Sua beleza merece uma experiência extraordinária.',
+      aboutTitle: config.aboutTitle || 'Mais do que um espaço de beleza, um encontro de histórias, sonhos e dedicação.',
+      aboutText1: config.aboutText1 || 'Toda grande história começa com um sonho. A nossa nasceu da paixão pela beleza, do desejo de transformar a autoestima das pessoas e da vontade de construir um espaço onde cada cliente se sentisse especial, acolhido e valorizado.',
+    });
+  }, [config]);
 
   const handleSave = async () => {
     setSaving(true);

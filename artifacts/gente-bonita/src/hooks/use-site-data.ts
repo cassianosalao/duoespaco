@@ -44,18 +44,7 @@ export function useSiteConfig() {
   return useQuery({
     queryKey: ['configuracoes'],
     queryFn: async () => {
-      // 1. Tentar carregar do localStorage
-      let localData: Record<string, string> = {};
-      try {
-        const stored = localStorage.getItem('duo_configuracoes');
-        if (stored) {
-          localData = JSON.parse(stored);
-        }
-      } catch (e) {
-        console.warn('Erro ao ler localStorage', e);
-      }
-
-      // 2. Tentar carregar do Supabase
+      // 1. Tentar carregar do Supabase (prioridade máxima para sincronizar entre todos os aparelhos)
       let remoteData: Record<string, string> = {};
       try {
         const { data, error } = await supabase.from('configuracoes').select('*');
@@ -66,13 +55,33 @@ export function useSiteConfig() {
         console.warn('Supabase offline ou sem tabelas, usando fallback local', e);
       }
 
+      // 2. Tentar carregar do localStorage como fallback
+      let localData: Record<string, string> = {};
+      try {
+        const stored = localStorage.getItem('duo_configuracoes');
+        if (stored) {
+          localData = JSON.parse(stored);
+        }
+      } catch (e) {
+        console.warn('Erro ao ler localStorage', e);
+      }
+
+      // Sincroniza o cache local com os dados frescos da nuvem
+      if (Object.keys(remoteData).length > 0) {
+        try {
+          localStorage.setItem('duo_configuracoes', JSON.stringify({ ...localData, ...remoteData }));
+        } catch (e) {}
+      }
+
       return {
         ...DEFAULT_CONFIG,
         ...localData,
         ...remoteData,
       };
     },
-    staleTime: 1000 * 30,
+    staleTime: 1000 * 5, // 5 segundos para refletir rápido entre dispositivos
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 }
 
