@@ -145,8 +145,24 @@ export function useGallery() {
 
         const { data, error } = await supabase.from('galeria').select('*').order('ordem');
         if (!error && data && data.length > 0) {
+          try {
+            localStorage.setItem('duo_galeria', JSON.stringify(data));
+          } catch (e) {}
           return data;
         }
+
+        // Tentar fallback em configuracoes (galeria_json)
+        try {
+          const { data: confData } = await supabase.from('configuracoes').select('valor').eq('id', 'galeria_json').maybeSingle();
+          if (confData?.valor) {
+            const parsed = JSON.parse(confData.valor);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              localStorage.setItem('duo_galeria', JSON.stringify(parsed));
+              return parsed;
+            }
+          }
+        } catch (e) {}
+
         if (localGallery && localGallery.length > 0) {
           return localGallery;
         }
@@ -155,6 +171,9 @@ export function useGallery() {
       }
       return null;
     },
+    staleTime: 1000 * 5,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 }
 

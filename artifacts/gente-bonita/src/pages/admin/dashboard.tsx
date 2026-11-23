@@ -467,6 +467,34 @@ function MediaManagerTab({
     }
   };
 
+  // Sincroniza a galeria completa no Supabase (tabela galeria e configuracoes)
+  const syncGalleryToSupabase = async (items: any[]) => {
+    try {
+      // 1. Apaga registros antigos da tabela galeria
+      await supabase.from('galeria').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+      // 2. Insere os novos itens
+      if (items.length > 0) {
+        const rows = items.map((item, idx) => ({
+          url_imagem: item.url_imagem,
+          rotulo: item.rotulo || '',
+          texto_alternativo: item.texto_alternativo || item.rotulo || 'Galeria Duo Espaço',
+          tamanho: item.tamanho || 'small',
+          ordem: idx + 1,
+        }));
+        await supabase.from('galeria').insert(rows);
+      }
+
+      // 3. Backup redundante em configuracoes
+      await supabase.from('configuracoes').upsert({
+        id: 'galeria_json',
+        valor: JSON.stringify(items),
+      });
+    } catch (e) {
+      console.warn('Erro ao sincronizar galeria no Supabase:', e);
+    }
+  };
+
   // Upload múltiplo para Galeria
   const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -488,7 +516,8 @@ function MediaManagerTab({
 
       setGalleryItems(newItems);
       saveGalleryLocally(newItems);
-      toast({ title: 'Fotos adicionadas à galeria com sucesso!' });
+      await syncGalleryToSupabase(newItems);
+      toast({ title: 'Fotos adicionadas e salvas no Supabase!' });
       onSuccess();
     } catch (err) {
       console.error(err);
@@ -499,12 +528,13 @@ function MediaManagerTab({
     }
   };
 
-  const handleRemoveGalleryItem = (index: number) => {
+  const handleRemoveGalleryItem = async (index: number) => {
     const updated = [...galleryItems];
     updated.splice(index, 1);
     setGalleryItems(updated);
     saveGalleryLocally(updated);
-    toast({ title: 'Foto removida da galeria.' });
+    await syncGalleryToSupabase(updated);
+    toast({ title: 'Foto removida e atualizada no Supabase.' });
     onSuccess();
   };
 
@@ -525,7 +555,10 @@ function MediaManagerTab({
       for (const [id, valor] of Object.entries(updates)) {
         await supabase.from('configuracoes').upsert({ id, valor });
       }
-    } catch (e) {}
+      await syncGalleryToSupabase(galleryItems);
+    } catch (e) {
+      console.error('Erro ao sincronizar mídias:', e);
+    }
 
     setSaving(false);
     toast({ title: 'Todas as mídias e fotos foram salvas com sucesso!' });
@@ -893,7 +926,7 @@ function MediaManagerTab({
             <p className="text-xs text-[#A99B90]">Suba fotos da galeria para compor a vitrine visual do site</p>
           </div>
 
-          <div>
+          <div className="flex flex-wrap items-center gap-2">
             <input
               type="file"
               ref={galleryInputRef}
@@ -918,37 +951,61 @@ function MediaManagerTab({
                 </>
               )}
             </Button>
+
+            <Button
+              type="button"
+              disabled={saving}
+              onClick={async () => {
+                setSaving(true);
+                saveGalleryLocally(galleryItems);
+                await syncGalleryToSupabase(galleryItems);
+                setSaving(false);
+                toast({ title: 'Galeria sincronizada com o Supabase com sucesso!' });
+                onSuccess();
+              }}
+              variant="outline"
+              className="border-[#BB8D5B]/40 text-[#E0BC8D] hover:bg-[#BB8D5B] hover:text-[#0B0908] font-mono text-xs uppercase font-bold"
+            >
+              <Save className="w-4 h-4 mr-1.5" /> Salvar Galeria
+            </Button>
           </div>
         </div>
 
         {/* Grade de fotos da galeria */}
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
-          {galleryItems.map((item, idx) => (
-            <div key={idx} className="relative p-3 rounded-xl border border-[#BB8D5B]/25 bg-[#14100E] space-y-2 group">
-              <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg bg-[#0B0908]">
-                <img src={item.url_imagem} alt={item.rotulo || 'Galeria'} className="h-full w-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => handleRemoveGalleryItem(idx)}
-                  className="absolute top-2 right-2 p-1.5 rounded-full bg-red-600/80 text-white hover:bg-red-600 transition-colors shadow-md"
-                  title="Remover Foto"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
+        {galleryItems.length === 0 ? (
+          <div className="p-8 text-center border border-dashed border-[#BB8D5B]/30 rounded-xl space-y-2">
+            <p className="text-sm text-[#A99B90]">Nenhuma foto na galeria no momento.</p>
+            <p className="text-xs text-[#A99B90]/70">Clique em "Adicionar Fotos da Galeria" acima para subir suas fotos.</p>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+            {galleryItems.map((item, idx) => (
+              <div key={idx} className="relative p-3 rounded-xl border border-[#BB8D5B]/25 bg-[#14100E] space-y-2 group">
+                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg bg-[#0B0908]">
+                  <img src={item.url_imagem} alt={item.rotulo || 'Galeria'} className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveGalleryItem(idx)}
+                    className="absolute top-2 right-2 p-1.5 rounded-full bg-red-600/80 text-white hover:bg-red-600 transition-colors shadow-md"
+                    title="Remover Foto"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
 
-              <div>
-                <Label className="text-[10px] font-mono uppercase text-[#A99B90]">Rótulo / Título</Label>
-                <Input
-                  value={item.rotulo || ''}
-                  onChange={(e) => handleUpdateGalleryLabel(idx, e.target.value)}
-                  className="bg-[#0B0908] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 text-xs"
-                  placeholder="Ex: Loiro Iluminado"
-                />
+                <div>
+                  <Label className="text-[10px] font-mono uppercase text-[#A99B90]">Rótulo / Título</Label>
+                  <Input
+                    value={item.rotulo || ''}
+                    onChange={(e) => handleUpdateGalleryLabel(idx, e.target.value)}
+                    className="bg-[#0B0908] border-[#BB8D5B]/30 text-[#F5F0E8] mt-1 text-xs"
+                    placeholder="Ex: Loiro Iluminado"
+                  />
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Botão Salvar Todas as Mídias */}
@@ -1220,13 +1277,20 @@ function ServicesManagerTab({ config, onSuccess }: { config: Record<string, stri
     toast({ title: 'Serviço adicionado! Preencha os campos e salve.' });
   };
 
-  const handleDelete = (index: number) => {
+  const handleDelete = async (index: number) => {
     if (!confirm('Deseja realmente excluir este serviço?')) return;
+    const itemToDelete = services[index];
     const updated = [...services];
     updated.splice(index, 1);
     setServices(updated);
     saveServicesLocally(updated);
+    if (itemToDelete?.id && itemToDelete.id.length > 20) {
+      try {
+        await supabase.from('servicos').delete().eq('id', itemToDelete.id);
+      } catch (e) {}
+    }
     toast({ title: 'Serviço removido com sucesso.' });
+    onSuccess();
   };
 
   const handleSave = async () => {
