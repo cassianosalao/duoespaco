@@ -167,8 +167,8 @@ function Hero() {
               )}
             </h1>
 
-            <p className="mt-6 text-base sm:text-lg leading-relaxed text-[#A99B90] max-w-xl">
-              A união do cuidado e transformação capilar por <strong>Cassiano Monteiro</strong> com a alta precisão e elegância em unhas de <strong>Isabella Morandi</strong>.
+            <p className="mt-6 text-base sm:text-base md:text-[17px] lg:text-lg leading-relaxed text-[#A99B90] max-w-xl md:max-w-2xl">
+              A união do cuidado e transformação capilar por <strong className="whitespace-nowrap font-semibold text-[#F5F0E8]">Cassiano&nbsp;Monteiro</strong> com a alta precisão e elegância em unhas de <strong className="whitespace-nowrap font-semibold text-[#F5F0E8]">Isabella&nbsp;Morandi</strong>.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-4">
@@ -353,7 +353,7 @@ function CabeloEUnhas({ onSelectService }: { onSelectService: (service: string, 
               Cabelos que contam <em className="text-[#E0BC8D] italic">sua essência.</em>
             </h2>
             <p className="mt-6 text-[15px] leading-7 text-[#A99B90]">
-              O cuidado com o cabelo vai além do visual: é sobre autoestima e identidade. Cassiano une técnicas consagradas de corte, visagismo, mechas iluminadas e a arte imperceptível da extensão capilar (Mega Hair).
+              O cuidado com o cabelo vai além do visual: é sobre autoestima e identidade. <strong className="whitespace-nowrap font-medium text-[#F5F0E8]">Cassiano&nbsp;Monteiro</strong> une técnicas consagradas de corte, visagismo, mechas iluminadas e a arte imperceptível da extensão capilar (Mega Hair).
             </p>
             <p className="mt-4 text-[15px] leading-7 text-[#A99B90]">
               Cada fio tratado com respeito, brilho e movimento sob medida para você se sentir deslumbrante em todos os momentos.
@@ -897,7 +897,7 @@ function Footer() {
           <div className="max-w-md">
             <BrandMark />
             <p className="mt-6 text-sm leading-6 text-[#A99B90]">
-              Atelier de beleza exclusivo por <strong>Cassiano</strong> e <strong>Isabella Morandi</strong>. Cabelos, unhas e experiências de luxo com atendimento personalizado.
+              Atelier de beleza exclusivo por <strong className="whitespace-nowrap text-[#F5F0E8]">Cassiano&nbsp;Monteiro</strong> e <strong className="whitespace-nowrap text-[#F5F0E8]">Isabella&nbsp;Morandi</strong>. Cabelos, unhas e experiências de luxo com atendimento personalizado.
             </p>
           </div>
 
@@ -944,7 +944,7 @@ function Footer() {
               {/* Card Cassiano */}
               <div className="rounded-xl border border-[#BB8D5B]/25 bg-[#14100E] p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-serif font-bold text-sm text-[#F5F0E8]">Cassiano</span>
+                  <span className="font-serif font-bold text-sm text-[#F5F0E8]">Cassiano Monteiro</span>
                   <span className="text-[10px] font-mono uppercase text-[#BB8D5B]">Cabelos & Mega Hair</span>
                 </div>
                 <div className="flex flex-col gap-2 pt-1">
@@ -1002,7 +1002,7 @@ function Footer() {
 
         {/* Rodapé Inferior com Link Minimalista para Admin */}
         <div className="flex flex-col justify-between items-center gap-4 pt-8 text-[11px] font-mono uppercase tracking-[.14em] text-[#786A5E] md:flex-row">
-          <span>© {new Date().getFullYear()} DUO ESPAÇO — Por Cassiano e Isabella.</span>
+          <span>© {new Date().getFullYear()} DUO ESPAÇO — Por Cassiano Monteiro e Isabella Morandi.</span>
           <a 
             href="/admin/login" 
             className="text-[#A99B90]/50 hover:text-[#E0BC8D] transition-colors flex items-center gap-1 tracking-wider text-[11px]"
