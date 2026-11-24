@@ -103,6 +103,19 @@ export function saveSiteConfigLocally(updates: Record<string, string>) {
   }
 }
 
+const ISABELLA_SERVICE_KEYWORDS = ['gel', 'alongamento', 'manuten', 'unha', 'mão', 'mao', 'pé', 'pe', 'plástica', 'plastica', 'esmalt'];
+
+function sanitizeService(item: any) {
+  if (!item) return item;
+  let prof = item.profissional;
+  if (!prof) {
+    const title = (item.titulo || item.title || '').toLowerCase();
+    const isIsa = ISABELLA_SERVICE_KEYWORDS.some(kw => title.includes(kw));
+    prof = isIsa ? 'Isabella' : 'Cassiano';
+  }
+  return { ...item, profissional: prof };
+}
+
 export function useServices() {
   return useQuery({
     queryKey: ['servicos'],
@@ -113,10 +126,14 @@ export function useServices() {
 
         const { data, error } = await supabase.from('servicos').select('*').order('ordem');
         if (!error && data && data.length > 0) {
-          return data;
+          const sanitized = data.map(sanitizeService);
+          try {
+            localStorage.setItem('duo_servicos', JSON.stringify(sanitized));
+          } catch (e) {}
+          return sanitized;
         }
         if (localServices && localServices.length > 0) {
-          return localServices;
+          return localServices.map(sanitizeService);
         }
       } catch (e) {
         console.warn('Erro ao buscar serviços no Supabase', e);

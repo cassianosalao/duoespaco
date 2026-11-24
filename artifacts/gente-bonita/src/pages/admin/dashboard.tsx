@@ -1254,7 +1254,21 @@ function ServicesManagerTab({ config, onSuccess }: { config: Record<string, stri
   const [services, setServices] = useState<any[]>(() => {
     try {
       const stored = localStorage.getItem('duo_servicos');
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Garante fallback de profissional se estiver em branco
+          const ISABELLA_KEYWORDS = ['gel', 'alongamento', 'manutenção', 'unha', 'mão', 'pé', 'plástica dos pés', 'esmalt'];
+          return parsed.map((s: any) => {
+            if (!s.profissional) {
+              const lower = (s.titulo || '').toLowerCase();
+              const isIsa = ISABELLA_KEYWORDS.some(kw => lower.includes(kw));
+              return { ...s, profissional: isIsa ? 'Isabella' : 'Cassiano' };
+            }
+            return s;
+          });
+        }
+      }
     } catch (e) {}
     return INITIAL_SERVICOS_COMBINADOS;
   });
@@ -1303,9 +1317,11 @@ function ServicesManagerTab({ config, onSuccess }: { config: Record<string, stri
     try {
       for (const srv of services) {
         await supabase.from('servicos').upsert({
+          ...(srv.id && srv.id.length > 20 ? { id: srv.id } : {}),
           titulo: srv.titulo,
           detalhe: srv.detalhe,
           descricao: srv.descricao,
+          profissional: srv.profissional || 'Cassiano',
         });
       }
     } catch (e) {}

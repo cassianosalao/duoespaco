@@ -1025,20 +1025,43 @@ function useScrollReveal() {
           observer.unobserve(entry.target);
         }
       });
-    }, { threshold: 0.05, rootMargin: '0px 0px -20px 0px' });
+    }, { threshold: 0.05, rootMargin: '50px 0px 50px 0px' });
 
-    const els = document.querySelectorAll('.gb-reveal:not(.is-observed)');
-    els.forEach(el => {
-      const rect = el.getBoundingClientRect();
-      if (rect.top < window.innerHeight && rect.bottom > 0) {
+    const scanAndObserve = () => {
+      const els = document.querySelectorAll('.gb-reveal');
+      els.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        if (rect.top < window.innerHeight + 100 && rect.bottom > -100) {
+          el.classList.add('is-visible');
+        } else if (!el.classList.contains('is-observed')) {
+          observer.observe(el);
+          el.classList.add('is-observed');
+        }
+      });
+    };
+
+    scanAndObserve();
+
+    // Re-escaneia quando imagens e mídias carregarem e alterarem a altura da página
+    const timeout1 = setTimeout(scanAndObserve, 300);
+    const timeout2 = setTimeout(scanAndObserve, 1000);
+    const timeout3 = setTimeout(scanAndObserve, 2500);
+
+    // Fallback de segurança absoluto: após 3.5s garante que nenhuma seção permaneça oculta
+    const timeoutSafety = setTimeout(() => {
+      document.querySelectorAll('.gb-reveal:not(.is-visible)').forEach(el => {
         el.classList.add('is-visible');
-      } else {
-        observer.observe(el);
-      }
-      el.classList.add('is-observed');
-    });
+      });
+    }, 3500);
+
+    window.addEventListener('resize', scanAndObserve);
 
     return () => {
+      clearTimeout(timeout1);
+      clearTimeout(timeout2);
+      clearTimeout(timeout3);
+      clearTimeout(timeoutSafety);
+      window.removeEventListener('resize', scanAndObserve);
       observer.disconnect();
     };
   }, []);
