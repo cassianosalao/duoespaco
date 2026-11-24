@@ -1302,11 +1302,15 @@ function ServicesManagerTab({ config, onSuccess }: { config: Record<string, stri
     updated.splice(index, 1);
     setServices(updated);
     saveServicesLocally(updated);
-    if (itemToDelete?.id && itemToDelete.id.length > 20) {
-      try {
+    try {
+      await supabase.from('configuracoes').upsert({
+        id: 'servicos_json',
+        valor: JSON.stringify(updated),
+      });
+      if (itemToDelete?.id && itemToDelete.id.length > 20) {
         await supabase.from('servicos').delete().eq('id', itemToDelete.id);
-      } catch (e) {}
-    }
+      }
+    } catch (e) {}
     toast({ title: 'Serviço removido com sucesso.' });
     onSuccess();
   };
@@ -1315,11 +1319,19 @@ function ServicesManagerTab({ config, onSuccess }: { config: Record<string, stri
     setSaving(true);
     saveServicesLocally(services);
     try {
+      // 1. Salvar JSON estruturado com profissional garantido
+      await supabase.from('configuracoes').upsert({
+        id: 'servicos_json',
+        valor: JSON.stringify(services),
+      });
+
+      // 2. Salvar na tabela de serviços usando a coluna numero para persistir o profissional ('Cassiano' ou 'Isabella')
       for (const srv of services) {
         const payload: Record<string, any> = {
           titulo: srv.titulo,
           detalhe: srv.detalhe,
           descricao: srv.descricao,
+          numero: srv.profissional || 'Cassiano',
         };
         if (srv.id && srv.id.length > 20) {
           payload.id = srv.id;
@@ -1405,9 +1417,14 @@ function ServicesManagerTab({ config, onSuccess }: { config: Record<string, stri
           return (
             <div key={srv.id || idx} className="p-4 rounded-xl border border-[#BB8D5B]/25 bg-[#0B0908] space-y-3 relative group">
               <div className="flex items-center justify-between">
-                <span className="font-mono text-[10px] uppercase font-bold tracking-wider text-[#BB8D5B] bg-[#BB8D5B]/10 px-2 py-0.5 rounded">
-                  {srv.profissional || 'Cassiano'}
-                </span>
+                <select
+                  value={srv.profissional || 'Cassiano'}
+                  onChange={(e) => handleUpdate(originalIndex, 'profissional', e.target.value)}
+                  className="font-mono text-[11px] uppercase font-bold tracking-wider text-[#BB8D5B] bg-[#14100E] border border-[#BB8D5B]/30 px-2 py-1 rounded cursor-pointer outline-none hover:border-[#BB8D5B]"
+                >
+                  <option value="Cassiano" className="bg-[#0B0908] text-[#E0BC8D]">Cassiano (Cabelos)</option>
+                  <option value="Isabella" className="bg-[#0B0908] text-[#E0BC8D]">Isabella (Unhas)</option>
+                </select>
                 <button
                   type="button"
                   onClick={() => handleDelete(originalIndex)}

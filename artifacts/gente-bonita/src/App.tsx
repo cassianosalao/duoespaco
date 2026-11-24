@@ -168,7 +168,7 @@ function Hero() {
             </h1>
 
             <p className="mt-6 text-base sm:text-lg leading-relaxed text-[#A99B90] max-w-xl">
-              A união do cuidado e transformação capilar por <strong>Cassiano</strong> com a alta precisão e elegância em unhas de <strong>Isabella Morandi</strong>.
+              A união do cuidado e transformação capilar por <strong>Cassiano Monteiro</strong> com a alta precisão e elegância em unhas de <strong>Isabella Morandi</strong>.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-4">

@@ -34,7 +34,7 @@ export const DEFAULT_CONFIG: Record<string, string> = {
 
   // Textos
   heroTitle: 'Sua beleza merece uma experiência extraordinária.',
-  heroSubtitle: 'A união do cuidado e transformação capilar por Cassiano com a alta precisão e elegância em unhas de Isabella Morandi.',
+  heroSubtitle: 'A união do cuidado e transformação capilar por Cassiano Monteiro com a alta precisão e elegância em unhas de Isabella Morandi.',
   aboutTitle: 'Mais do que um espaço de beleza, um encontro de histórias, sonhos e dedicação.',
   aboutText1: 'Toda grande história começa com um sonho. A nossa nasceu da paixão pela beleza, do desejo de transformar a autoestima das pessoas e da vontade de construir um espaço onde cada cliente se sentisse especial, acolhido e valorizado.',
   aboutText2: 'O Duo Espaço representa a união de duas trajetórias, duas personalidades e duas paixões que se complementam.',
@@ -108,6 +108,9 @@ const ISABELLA_SERVICE_KEYWORDS = ['gel', 'alongamento', 'manuten', 'unha', 'mã
 function sanitizeService(item: any) {
   if (!item) return item;
   let prof = item.profissional;
+  if (!prof && (item.numero === 'Cassiano' || item.numero === 'Isabella')) {
+    prof = item.numero;
+  }
   if (!prof) {
     const title = (item.titulo || item.title || '').toLowerCase();
     const isIsa = ISABELLA_SERVICE_KEYWORDS.some(kw => title.includes(kw));
@@ -124,6 +127,7 @@ export function useServices() {
         const stored = localStorage.getItem('duo_servicos');
         let localServices = stored ? JSON.parse(stored) : null;
 
+        // 1. Tentar ler da tabela servicos
         const { data, error } = await supabase.from('servicos').select('*').order('ordem');
         if (!error && data && data.length > 0) {
           const sanitized = data.map(sanitizeService);
@@ -132,6 +136,22 @@ export function useServices() {
           } catch (e) {}
           return sanitized;
         }
+
+        // 2. Tentar ler do servicos_json em configuracoes
+        try {
+          const { data: confData } = await supabase.from('configuracoes').select('valor').eq('id', 'servicos_json').maybeSingle();
+          if (confData?.valor) {
+            const parsed = JSON.parse(confData.valor);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const sanitized = parsed.map(sanitizeService);
+              try {
+                localStorage.setItem('duo_servicos', JSON.stringify(sanitized));
+              } catch (e) {}
+              return sanitized;
+            }
+          }
+        } catch (e) {}
+
         if (localServices && localServices.length > 0) {
           return localServices.map(sanitizeService);
         }
@@ -140,7 +160,9 @@ export function useServices() {
       }
       return null;
     },
-    staleTime: 1000 * 30,
+    staleTime: 1000 * 5,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 }
 
