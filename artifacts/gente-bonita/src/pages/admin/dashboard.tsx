@@ -1316,15 +1316,25 @@ function ServicesManagerTab({ config, onSuccess }: { config: Record<string, stri
     saveServicesLocally(services);
     try {
       for (const srv of services) {
-        await supabase.from('servicos').upsert({
-          ...(srv.id && srv.id.length > 20 ? { id: srv.id } : {}),
+        const payload: Record<string, any> = {
           titulo: srv.titulo,
           detalhe: srv.detalhe,
           descricao: srv.descricao,
-          profissional: srv.profissional || 'Cassiano',
-        });
+        };
+        if (srv.id && srv.id.length > 20) {
+          payload.id = srv.id;
+        }
+        if (srv.ordem !== undefined) {
+          payload.ordem = srv.ordem;
+        }
+        const { error } = await supabase.from('servicos').upsert(payload);
+        if (error) {
+          console.error('Erro ao salvar serviço no Supabase:', error);
+        }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Erro no handleSave:', e);
+    }
     setSaving(false);
     toast({ title: 'Todos os serviços foram salvos com sucesso!' });
     onSuccess();
